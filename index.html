@@ -123,6 +123,7 @@
       let cameraVY = 0;
       let gameOver = false;
       let furthestX = 0;
+      const DEBUG_HITBOXES = new URLSearchParams(window.location.search).get('debug') === '1';
       let best = Number(localStorage.getItem('ropeDashBest') || 0);
 
       const GRAVITY = 1500;
@@ -599,31 +600,65 @@
         return !anchors.some(a => a.x > player.x - 260 && hypot(a.x - player.x, a.y - player.y) <= HOOK_RANGE);
       }
 
-      function hitsObstacle() {
-        const px = player.x;
-        const py = player.y;
-        const r = PLAYER_RADIUS;
+      function playerHitboxes() {
+        const pose = stickmanCorePose(false);
+        const chest = {
+          x: pose.shoulder.x + (pose.hip.x - pose.shoulder.x) * 0.32,
+          y: pose.shoulder.y + (pose.hip.y - pose.shoulder.y) * 0.32,
+        };
+        return [
+          { shape: 'circle', kind: 'player-head', x: pose.head.x, y: pose.head.y, r: 11 },
+          { shape: 'circle', kind: 'player-chest', x: chest.x, y: chest.y, r: 9 },
+          { shape: 'circle', kind: 'player-hip', x: pose.hip.x, y: pose.hip.y, r: 9 },
+        ];
+      }
+
+      function obstacleHitboxes() {
+        const hitboxes = [];
         for (const o of obstacles) {
           if (o.type === 'saw') {
-            const cy = o.y + Math.sin(time * 1.8 + o.phase) * o.bob;
-            if (hypot(px - o.x, py - cy) < r + o.r * 0.86) return true;
+            hitboxes.push({
+              shape: 'circle',
+              kind: 'saw',
+              x: o.x,
+              y: o.y + Math.sin(time * 1.8 + o.phase) * o.bob,
+              r: o.r * 0.86,
+            });
           } else if (o.type === 'lava' || o.type === 'water') {
-            if (circleRect(px, py, r, o.x, o.y, o.w, o.h)) return true;
+            hitboxes.push({ shape: 'rect', kind: o.type, x: o.x, y: o.y, w: o.w, h: o.h });
           } else if (o.type === 'gate') {
             const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
             const gap = o.gap * (0.75 + open * 0.40);
             const top = o.gapY - gap / 2;
             const bottom = o.gapY + gap / 2;
-            if (circleRect(px, py, r, o.x, -GATE_EXTENT, o.w, top + GATE_EXTENT) || circleRect(px, py, r, o.x, bottom, o.w, GATE_EXTENT)) return true;
+            hitboxes.push({ shape: 'rect', kind: 'gate', x: o.x, y: -GATE_EXTENT, w: o.w, h: top + GATE_EXTENT });
+            hitboxes.push({ shape: 'rect', kind: 'gate', x: o.x, y: bottom, w: o.w, h: GATE_EXTENT });
           } else if (o.type === 'spikes') {
             for (let i = 0; i < o.count; i++) {
               const x = o.x + i * o.size;
-              const tri = spikeTri(x, o.y, o.size, o.dir);
-              if (circleTriangle(px, py, r, tri)) return true;
+              hitboxes.push({ shape: 'polygon', kind: 'spikes', points: spikeTri(x, o.y, o.size, o.dir) });
             }
           }
         }
+        return hitboxes;
+      }
+
+      function hitboxHitsPlayer(hitbox, playerBox) {
+        if (hitbox.shape === 'circle') {
+          return hypot(playerBox.x - hitbox.x, playerBox.y - hitbox.y) < playerBox.r + hitbox.r;
+        }
+        if (hitbox.shape === 'rect') {
+          return circleRect(playerBox.x, playerBox.y, playerBox.r, hitbox.x, hitbox.y, hitbox.w, hitbox.h);
+        }
+        if (hitbox.shape === 'polygon') {
+          return circleTriangle(playerBox.x, playerBox.y, playerBox.r, hitbox.points);
+        }
         return false;
+      }
+
+      function hitsObstacle() {
+        const playerBoxes = playerHitboxes();
+        return obstacleHitboxes().some(hitbox => playerBoxes.some(p => hitboxHitsPlayer(hitbox, p)));
       }
 
       function circleRect(cx, cy, cr, rx, ry, rw, rh) {
@@ -685,8 +720,58 @@
         drawObstacles();
         drawAnchors();
         drawRopeAndPlayer();
+        if (DEBUG_HITBOXES) drawDebugHitboxes();
 
         if (gameOver) drawCrashCard();
+      }
+
+      function drawDebugHitboxes() {
+        const drawPath = (hitbox) => {
+          ctx.beginPath();
+          if (hitbox.shape === 'circle') {
+            ctx.arc(sx(hitbox.x), sy(hitbox.y), hitbox.r, 0, Math.PI * 2);
+          } else if (hitbox.shape === 'rect') {
+            ctx.rect(sx(hitbox.x), sy(hitbox.y), hitbox.w, hitbox.h);
+          } else if (hitbox.shape === 'polygon') {
+            const [first, ...rest] = hitbox.points;
+            ctx.moveTo(sx(first.x), sy(first.y));
+            for (const p of rest) ctx.lineTo(sx(p.x), sy(p.y));
+            ctx.closePath();
+          }
+        };
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.setLineDash([7, 5]);
+
+        const playerBoxes = playerHitboxes();
+        for (const playerBox of playerBoxes) {
+          drawPath(playerBox);
+          ctx.fillStyle = 'rgba(0, 95, 255, 0.14)';
+          ctx.strokeStyle = '#005fff';
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        for (const hitbox of obstacleHitboxes()) {
+          const hit = playerBoxes.some(playerBox => hitboxHitsPlayer(hitbox, playerBox));
+          drawPath(hitbox);
+          ctx.fillStyle = hit ? 'rgba(255, 0, 0, 0.28)' : 'rgba(255, 0, 160, 0.10)';
+          ctx.strokeStyle = hit ? '#ff0000' : '#ff0099';
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // Lost-state threshold is not a collision hitbox, but it is useful in
+        // debug mode because it explains the below-world death condition.
+        ctx.strokeStyle = '#ff8a00';
+        ctx.setLineDash([14, 9]);
+        ctx.beginPath();
+        ctx.moveTo(0, sy(LOST_BELOW_Y));
+        ctx.lineTo(W, sy(LOST_BELOW_Y));
+        ctx.stroke();
+
+        ctx.restore();
       }
 
       function drawBackground() {
@@ -1131,6 +1216,37 @@
           solveRagdollConstraints();
         }
         pinRagdollHands(dt);
+        stickmanCorePose(true);
+      }
+
+      function stickmanCorePose(updateVisualSide = false) {
+        if (!ragdoll.initialized) initializeRagdoll();
+        const j = ragdoll.joints;
+        const headR = 13;
+        const grip = { x: player.x, y: player.y };
+        const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+        const mul = (v, s) => ({ x: v.x * s, y: v.y * s });
+        const norm = (v, fallback = { x: 0, y: 1 }) => {
+          const d = hypot(v.x, v.y);
+          return d > 0.0001 ? { x: v.x / d, y: v.y / d } : fallback;
+        };
+
+        const shoulder = j.shoulder;
+        const hip = j.hip;
+        const body = norm({ x: hip.x - shoulder.x, y: hip.y - shoulder.y });
+        const sideBase = { x: -body.y, y: body.x };
+        const gripSide = (grip.x - shoulder.x) * sideBase.x + (grip.y - shoulder.y) * sideBase.y;
+        const desiredSide = gripSide > 0 ? -1 : 1;
+        if (ragdoll.visualSide == null) {
+          ragdoll.visualSide = desiredSide;
+        } else if (updateVisualSide) {
+          ragdoll.visualSide += (desiredSide - ragdoll.visualSide) * 0.18;
+        }
+        const side = mul(sideBase, clamp(ragdoll.visualSide, -1, 1));
+        const head = add(add(shoulder, mul(body, -5)), mul(side, headR + 4));
+        const headDir = norm({ x: head.x - shoulder.x, y: head.y - shoulder.y }, side);
+        const neckEnd = add(head, mul(headDir, -headR));
+        return { body, side, shoulder, hip, head, neckEnd, headR, grip };
       }
 
       function drawStickman() {
@@ -1159,20 +1275,8 @@
         // The ragdoll still supplies inertia, but the final silhouette is
         // art-directed like the reference: one visible arm, attached head,
         // torso, and two readable bent legs.
-        const body = norm({ x: j.hip.x - j.shoulder.x, y: j.hip.y - j.shoulder.y });
-        let sideBase = { x: -body.y, y: body.x };
-        const gripSide = (grip.x - j.shoulder.x) * sideBase.x + (grip.y - j.shoulder.y) * sideBase.y;
-        const desiredSide = gripSide > 0 ? -1 : 1;
-        ragdoll.visualSide = ragdoll.visualSide == null
-          ? desiredSide
-          : ragdoll.visualSide + (desiredSide - ragdoll.visualSide) * 0.18;
-        const side = mul(sideBase, clamp(ragdoll.visualSide, -1, 1));
-
-        const shoulder = j.shoulder;
-        const hip = j.hip;
-        const head = add(add(shoulder, mul(body, -5)), mul(side, headR + 4));
-        const headDir = norm({ x: head.x - shoulder.x, y: head.y - shoulder.y }, side);
-        const neckEnd = add(head, mul(headDir, -headR));
+        const core = stickmanCorePose(false);
+        const { body, side, shoulder, hip, head, neckEnd } = core;
 
         const armCtlPose = add(add(mix(shoulder, grip, 0.55), mul(side, -15)), mul(body, 7));
         const armCtl = mix(j.elbowL, armCtlPose, 0.72);
