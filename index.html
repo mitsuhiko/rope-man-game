@@ -167,6 +167,8 @@
       const TERRAIN_POOL_MIN_W = 420;
       const TERRAIN_POOL_MAX_W = 980;
       const TERRAIN_POOL_STEP = 18;
+      const TERRAIN_POOL_SCAN_STEP = 28;
+      const SPIKE_GROUND_INSET = 4;
 
       const player = {
         x: 150,
@@ -344,14 +346,15 @@
           const size = rand(22, 31);
           const count = Math.floor(rand(4, 9));
           const spikeX = x + (ceiling ? 0 : rand(-50, 95));
-          const spikeMidX = spikeX + count * size * 0.5;
           obstacles.push({
             type: 'spikes',
             x: spikeX,
-            y: ceiling ? 34 : terrainYAt(spikeMidX) - 8,
+            y: ceiling ? 34 : 0,
             count,
             dir: ceiling ? 1 : -1,
             size,
+            ground: !ceiling,
+            height: ceiling ? size : size * rand(1.45, 1.95),
           });
         }
       }
@@ -706,29 +709,71 @@
 
       function generateTerrainPoolsUntil(worldX) {
         while (nextTerrainPoolX < worldX) {
-          const x = nextTerrainPoolX + rand(0, 260);
-          const w = rand(TERRAIN_POOL_MIN_W, TERRAIN_POOL_MAX_W);
-          const stats = terrainRangeStats(x, x + w, 42);
-          const depth = stats.maxY - stats.minY;
+          const seedX = nextTerrainPoolX + rand(0, 260);
+          const searchW = rand(TERRAIN_POOL_MIN_W, TERRAIN_POOL_MAX_W);
+          const valley = terrainValleyInRange(seedX, seedX + searchW);
+          const stats = terrainRangeStats(seedX, seedX + searchW, 42);
+          const depth = valley.y - stats.minY;
 
-          if (depth > 48) {
-            const levelY = clamp(
-              stats.minY + depth * rand(0.48, 0.72),
-              stats.minY + 24,
-              stats.maxY - 22
-            );
-            terrainPools.push({
-              type: Math.random() < 0.62 ? 'water' : 'lava',
-              x,
-              w,
-              levelY,
-              waveAmp: rand(3.5, 6.5),
-              waveOffset: rand(0, Math.PI * 2),
-            });
+          if (depth > 56) {
+            const waterDepth = rand(42, Math.max(54, Math.min(130, depth * 0.72)));
+            const levelY = clamp(valley.y - waterDepth, stats.minY + 20, valley.y - 24);
+            const leftEdge = terrainLevelCrossing(valley.x, levelY, -1, TERRAIN_POOL_MAX_W * 0.9);
+            const rightEdge = terrainLevelCrossing(valley.x, levelY, 1, TERRAIN_POOL_MAX_W * 0.9);
+
+            if (leftEdge != null && rightEdge != null && rightEdge - leftEdge >= TERRAIN_POOL_MIN_W * 0.45) {
+              terrainPools.push({
+                type: Math.random() < 0.62 ? 'water' : 'lava',
+                x: leftEdge,
+                w: rightEdge - leftEdge,
+                levelY,
+                waveAmp: rand(3.5, 6.5),
+                waveOffset: rand(0, Math.PI * 2),
+              });
+              nextTerrainPoolX = rightEdge + rand(620, 1280);
+              continue;
+            }
           }
 
-          nextTerrainPoolX = x + w + rand(620, 1280);
+          nextTerrainPoolX = seedX + searchW + rand(620, 1280);
         }
+      }
+
+      function terrainValleyInRange(left, right, step = TERRAIN_POOL_SCAN_STEP) {
+        let valleyX = left;
+        let valleyY = terrainYAt(left);
+        for (let x = left + step; x <= right; x += step) {
+          const y = terrainYAt(x);
+          if (y > valleyY) {
+            valleyX = x;
+            valleyY = y;
+          }
+        }
+        const endY = terrainYAt(right);
+        if (endY > valleyY) {
+          valleyX = right;
+          valleyY = endY;
+        }
+        return { x: valleyX, y: valleyY };
+      }
+
+      function terrainLevelCrossing(startX, levelY, dir, maxDistance) {
+        let prevX = startX;
+        let prevD = terrainYAt(prevX) - levelY;
+        if (prevD <= 0) return null;
+
+        for (let distance = TERRAIN_POOL_SCAN_STEP; distance <= maxDistance; distance += TERRAIN_POOL_SCAN_STEP) {
+          const x = startX + dir * distance;
+          const d = terrainYAt(x) - levelY;
+          if (d <= 0) {
+            const t = clamp(prevD / (prevD - d), 0, 1);
+            return prevX + (x - prevX) * t;
+          }
+          prevX = x;
+          prevD = d;
+        }
+
+        return null;
       }
 
       function terrainRangeStats(left, right, step = 48) {
@@ -795,6 +840,19 @@
         const polys = [];
         let surface = [];
         let ground = [];
+        const wetThreshold = 1;
+        const wetness = (p) => p.y - pool.levelY;
+        const surfaceY = (p) => Math.min(terrainLiquidSurfaceY(pool, p.x), p.y - wetThreshold);
+        const addPoint = (p) => {
+          surface.push({ x: p.x, y: surfaceY(p) });
+          ground.push({ x: p.x, y: p.y });
+        };
+        const addCrossing = (a, b, da, db) => {
+          const denom = db - da;
+          const t = Math.abs(denom) < 0.0001 ? 0.5 : clamp((wetThreshold - da) / denom, 0, 1);
+          const x = a.x + (b.x - a.x) * t;
+          addPoint({ x, y: terrainYAt(x) });
+        };
         const finish = () => {
           if (surface.length >= 2) {
             polys.push({
@@ -807,14 +865,23 @@
           ground = [];
         };
 
+        let prev = null;
+        let prevWetness = 0;
         for (const p of terrain) {
-          const levelY = terrainLiquidSurfaceY(pool, p.x);
-          if (p.y > levelY + 1) {
-            surface.push({ x: p.x, y: levelY });
-            ground.push({ x: p.x, y: p.y });
+          const d = wetness(p);
+          if (d > wetThreshold) {
+            if (prev && prevWetness <= wetThreshold) {
+              addCrossing(prev, p, prevWetness, d);
+            }
+            addPoint(p);
           } else {
+            if (prev && prevWetness > wetThreshold) {
+              addCrossing(prev, p, prevWetness, d);
+            }
             finish();
           }
+          prev = p;
+          prevWetness = d;
         }
         finish();
         return polys;
@@ -871,8 +938,7 @@
             hitboxes.push({ shape: 'rect', kind: 'gate', x: o.x, y: bottom, w: o.w, h: GATE_EXTENT });
           } else if (o.type === 'spikes') {
             for (let i = 0; i < o.count; i++) {
-              const x = o.x + i * o.size;
-              hitboxes.push({ shape: 'polygon', kind: 'spikes', points: spikeTri(x, o.y, o.size, o.dir) });
+              hitboxes.push({ shape: 'polygon', kind: 'spikes', points: spikePolygon(o, i) });
             }
           }
         }
@@ -904,11 +970,33 @@
         return hypot(cx - nx, cy - ny) < cr;
       }
 
-      function spikeTri(x, y, size, dir) {
+      function spikeTri(x, y, size, dir, height = size) {
         if (dir < 0) {
-          return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y - size }];
+          return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y - height }];
         }
-        return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y + size }];
+        return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y + height }];
+      }
+
+      function groundSpikeTri(x, size, height) {
+        const midX = x + size / 2;
+        const sample = Math.max(6, size * 0.35);
+        const slope = (terrainYAt(midX + sample) - terrainYAt(midX - sample)) / (sample * 2);
+        const inv = 1 / Math.hypot(slope, 1);
+        const nx = slope * inv;
+        const ny = -inv;
+        return [
+          { x, y: terrainYAt(x) + SPIKE_GROUND_INSET },
+          { x: x + size, y: terrainYAt(x + size) + SPIKE_GROUND_INSET },
+          { x: midX + nx * height * 0.18, y: terrainYAt(midX) + ny * height },
+        ];
+      }
+
+      function spikePolygon(o, i) {
+        const x = o.x + i * o.size;
+        if (o.ground) {
+          return groundSpikeTri(x, o.size, o.height || o.size * 1.6);
+        }
+        return spikeTri(x, o.y, o.size, o.dir, o.height || o.size);
       }
 
       function circlePolygon(cx, cy, r, points) {
@@ -1253,7 +1341,7 @@
         ctx.strokeStyle = SPIKE;
         ctx.lineWidth = 2.5;
         for (let i = 0; i < o.count; i++) {
-          const tri = spikeTri(o.x + i * o.size, o.y, o.size, o.dir);
+          const tri = spikePolygon(o, i);
           ctx.beginPath();
           ctx.moveTo(sx(tri[0].x), sy(tri[0].y));
           ctx.lineTo(sx(tri[1].x), sy(tri[1].y));
