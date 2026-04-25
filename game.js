@@ -42,6 +42,15 @@
 
   const GRAVITY = 1500;
   const HOOK_RANGE = 720;
+  const FOCUS_MIN_MOMENTUM_SPEED = 80;
+  const FOCUS_FULL_BIAS_SPEED = 950;
+  const FOCUS_DIRECTION_BIAS = 120;
+  const FOCUS_STICKY_DISTANCE = 35;
+  const FOCUS_RELEASE_DISTANCE = 45;
+  const FOCUS_RECENT_ANCHOR_PENALTY = 360;
+  const FOCUS_RECENT_ANCHOR_DURATION = 1.4;
+  const FOCUS_RECENT_ANCHOR_DISTANCE = 520;
+  const FOCUS_OUT_OF_RANGE_WEIGHT = 0.7;
   const LOST_BELOW_Y = 1500;
   const ROPE_SHOT_SPEED = 2600;
   const SWING_ACCEL = 1050;
@@ -98,6 +107,10 @@
   let spawnIndex = 0;
   let focusedAnchor = null;
   let lockedAnchor = null;
+  let recentReleasedAnchor = null;
+  let recentReleasedAnchorAt = -Infinity;
+  let recentReleasedAnchorX = 0;
+  let recentReleasedAnchorY = 0;
   let ropeShot = null;
   const keys = { left: false, right: false, up: false, down: false };
   const touchInput = { joystickPointerId: null, x: 0, y: 0 };
@@ -243,6 +256,10 @@
     spawnIndex = 0;
     focusedAnchor = null;
     lockedAnchor = null;
+    recentReleasedAnchor = null;
+    recentReleasedAnchorAt = -Infinity;
+    recentReleasedAnchorX = 0;
+    recentReleasedAnchorY = 0;
     ropeShot = null;
     ragdoll.initialized = false;
     ragdoll.joints = {};
@@ -357,36 +374,50 @@
   }
 
   function updateFocus() {
-    if (!player.attached && lockedAnchor) {
-      focusedAnchor = lockedAnchor;
-      return;
-    }
+    const previousFocus = focusedAnchor;
+    const speed = hypot(player.vx, player.vy);
+    const speedT = clamp(
+      (speed - FOCUS_MIN_MOMENTUM_SPEED) / (FOCUS_FULL_BIAS_SPEED - FOCUS_MIN_MOMENTUM_SPEED),
+      0,
+      1
+    );
+    const directionBias = FOCUS_DIRECTION_BIAS * smoothstep01(speedT);
+    const aimX = speed > 0.0001 ? player.vx / speed : 0;
+    const aimY = speed > 0.0001 ? player.vy / speed : 0;
 
-    const candidates = anchors.filter(a => a !== player.anchor && a.x > player.x + 55);
+    const candidates = anchors.filter(a => a !== player.anchor);
     let bestAnchor = null;
-    let bestScore = -Infinity;
-    const speed = Math.max(80, hypot(player.vx, player.vy));
-    const vx = player.vx / speed;
-    const vy = player.vy / speed;
+    let bestCost = Infinity;
 
     for (const a of candidates) {
       const dx = a.x - player.x;
       const dy = a.y - player.y;
       const d = Math.max(1, hypot(dx, dy));
-      const direction = (dx / d) * vx + (dy / d) * vy;
-      let score = 0;
-      score -= d * 0.006;
-      score += dx > 0 ? 1.1 : -3.5;
-      score += direction * 1.4;
-      if (d <= HOOK_RANGE) score += 2.5;
-      if (a === focusedAnchor) score += 2.2; // targeting stickiness
-      if (a === lockedAnchor) score += 5;
-      if (score > bestScore) {
-        bestScore = score;
+      const alignment = directionBias ? (dx / d) * aimX + (dy / d) * aimY : 0;
+
+      // Pick the nearest anchor by default. Momentum only acts like a small
+      // damped distance discount/penalty, so a far anchor cannot win just
+      // because it happens to line up with a brief swing direction.
+      let cost = d - alignment * directionBias;
+      if (d > HOOK_RANGE) cost += (d - HOOK_RANGE) * FOCUS_OUT_OF_RANGE_WEIGHT;
+      if (a === recentReleasedAnchor) {
+        const ageT = clamp((time - recentReleasedAnchorAt) / FOCUS_RECENT_ANCHOR_DURATION, 0, 1);
+        const releaseDistance = hypot(player.x - recentReleasedAnchorX, player.y - recentReleasedAnchorY);
+        const distanceT = clamp(releaseDistance / FOCUS_RECENT_ANCHOR_DISTANCE, 0, 1);
+        const penaltyT = (1 - smoothstep01(ageT)) * (1 - smoothstep01(distanceT));
+        cost += FOCUS_RECENT_ANCHOR_PENALTY * penaltyT;
+      }
+      if (a === previousFocus) cost -= FOCUS_STICKY_DISTANCE;
+      if (a === lockedAnchor) cost -= FOCUS_RELEASE_DISTANCE;
+      if (cost < bestCost) {
+        bestCost = cost;
         bestAnchor = a;
       }
     }
     focusedAnchor = bestAnchor || null;
+    if (!player.attached && lockedAnchor && lockedAnchor !== focusedAnchor) {
+      lockedAnchor = null;
+    }
   }
 
   function inputAction() {
@@ -397,13 +428,17 @@
     if (player.attached) {
       updateFocus();
       lockedAnchor = focusedAnchor;
+      recentReleasedAnchor = player.anchor;
+      recentReleasedAnchorAt = time;
+      recentReleasedAnchorX = player.x;
+      recentReleasedAnchorY = player.y;
       player.attached = false;
       player.anchor = null;
       ropeShot = null;
       return;
     }
     updateFocus();
-    const target = lockedAnchor || focusedAnchor;
+    const target = focusedAnchor;
     if (target) {
       const d = hypot(target.x - player.x, target.y - player.y);
       if (d <= HOOK_RANGE) {
@@ -616,6 +651,8 @@
     player.attached = true;
     player.anchor = anchor;
     lockedAnchor = null;
+    recentReleasedAnchor = null;
+    recentReleasedAnchorAt = -Infinity;
     player.ropeLength = clamp(d, MIN_ROPE, MAX_ROPE);
     player.angle = Math.atan2(player.x - anchor.x, player.y - anchor.y);
 
@@ -637,6 +674,8 @@
     player.attached = false;
     player.anchor = null;
     lockedAnchor = null;
+    recentReleasedAnchor = null;
+    recentReleasedAnchorAt = -Infinity;
     ropeShot = null;
   }
 
@@ -1213,11 +1252,11 @@
       const isLocked = a === lockedAnchor;
       ctx.save();
       ctx.translate(x, sy(a.y));
-      ctx.lineWidth = isLocked ? 5 : (isFocus ? 4 : 2);
-      ctx.strokeStyle = isLocked ? ROPE : INK;
+      ctx.lineWidth = isLocked ? 5 : 2;
+      ctx.strokeStyle = (isLocked || isFocus) ? ROPE : INK;
       ctx.fillStyle = PAPER;
       ctx.beginPath();
-      ctx.arc(0, 0, isLocked ? 15 : (isFocus ? 12 : 8), 0, Math.PI * 2);
+      ctx.arc(0, 0, isLocked ? 15 : 8, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
       ctx.beginPath();
@@ -1234,14 +1273,15 @@
       ctx.save();
       ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
       ctx.globalAlpha = d <= HOOK_RANGE ? 0.85 : 0.35;
-      ctx.lineWidth = lockedAnchor ? 3 : 2;
+      const isLockedTarget = focusedAnchor === lockedAnchor;
+      ctx.lineWidth = isLockedTarget ? 3 : 2;
       ctx.setLineDash(d <= HOOK_RANGE ? [9, 7] : [4, 10]);
       ctx.beginPath();
       ctx.moveTo(sx(player.x), sy(player.y));
       ctx.lineTo(sx(focusedAnchor.x), sy(focusedAnchor.y));
       ctx.stroke();
       ctx.setLineDash([]);
-      if (lockedAnchor) {
+      if (isLockedTarget) {
         ctx.fillStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
         ctx.beginPath();
         ctx.arc(sx(focusedAnchor.x), sy(focusedAnchor.y), 5, 0, Math.PI * 2);
