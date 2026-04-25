@@ -85,10 +85,6 @@
       <div>best <span id="best">0</span>m</div>
       <div id="state">attached</div>
     </div>
-    <div class="panel help">
-      <b>← / →</b>: lean into the swing. <b>↑ / ↓</b>: shorten / lengthen rope. <b>Space / click / tap</b>: release / hook.<br />
-      Worms-style ninja rope: pump momentum with swing and rope length, clear gates, avoid spikes, saws, lava and water. <b>R</b>: restart.
-    </div>
   </div>
 
   <script>
@@ -131,6 +127,7 @@
 
       const GRAVITY = 1500;
       const HOOK_RANGE = 720;
+      const LOST_BELOW_Y = 1500;
       const ROPE_SHOT_SPEED = 2600;
       const SWING_ACCEL = 1050;
       const AIR_ACCEL = 620;
@@ -138,6 +135,7 @@
       const PLAYER_RADIUS = 15;
       const MIN_ROPE = 110;
       const MAX_ROPE = 780;
+      const GATE_EXTENT = 2400;
 
       const player = {
         x: 150,
@@ -463,7 +461,7 @@
           cameraX += cameraVX * dt;
           cameraY += cameraVY * dt;
 
-          if (player.y > H + 90 || hitsObstacle()) {
+          if (isUnrecoverablyLost() || hitsObstacle()) {
             die();
           }
         }
@@ -577,13 +575,16 @@
         ropeShot = null;
       }
 
+      function isUnrecoverablyLost() {
+        if (player.attached) return false;
+        if (player.y < LOST_BELOW_Y) return false;
+        return !anchors.some(a => a.x > player.x - 260 && hypot(a.x - player.x, a.y - player.y) <= HOOK_RANGE);
+      }
+
       function hitsObstacle() {
         const px = player.x;
         const py = player.y;
         const r = PLAYER_RADIUS;
-        const floorY = H - 84;
-        if (py > floorY + 65) return true;
-
         for (const o of obstacles) {
           if (o.type === 'saw') {
             const cy = o.y + Math.sin(time * 1.8 + o.phase) * o.bob;
@@ -595,7 +596,7 @@
             const gap = o.gap * (0.75 + open * 0.40);
             const top = o.gapY - gap / 2;
             const bottom = o.gapY + gap / 2;
-            if (circleRect(px, py, r, o.x, 0, o.w, top) || circleRect(px, py, r, o.x, bottom, o.w, H - bottom)) return true;
+            if (circleRect(px, py, r, o.x, -GATE_EXTENT, o.w, top + GATE_EXTENT) || circleRect(px, py, r, o.x, bottom, o.w, GATE_EXTENT)) return true;
           } else if (o.type === 'spikes') {
             for (let i = 0; i < o.count; i++) {
               const x = o.x + i * o.size;
@@ -794,8 +795,8 @@
         ctx.lineWidth = 3;
         ctx.strokeStyle = INK;
         ctx.fillStyle = PAPER;
-        drawBar(x, 0, o.w, top);
-        drawBar(x, bottom, o.w, H - bottom);
+        drawBar(x, -GATE_EXTENT, o.w, top + GATE_EXTENT);
+        drawBar(x, bottom, o.w, GATE_EXTENT);
         ctx.strokeStyle = '#777';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -995,10 +996,18 @@
         const tx = -uy;
         const ty = ux;
         const tangentSpeed = player.vx * tx + player.vy * ty;
-        const sideSign = tangentSpeed >= 0 ? 1 : -1;
-        const sxn = tx * sideSign;
-        const syn = ty * sideSign;
-        const flutter = Math.sin(time * 12 + player.runPhase) * 0.5;
+        const speed = hypot(player.vx, player.vy);
+        // Continuous blend instead of snapping between left/right silhouettes.
+        // Positive/negative tangent speed shifts the head/body smoothly to the
+        // side of the rope; limb trailing is driven by velocity/gravity.
+        const sideBlend = clamp(tangentSpeed / 700, -1, 1);
+        const sxn = tx;
+        const syn = ty;
+        const trailX = clamp(-player.vx * 0.035, -42, 42);
+        const trailY = clamp(-player.vy * 0.035 + 18, -28, 48);
+        const forceSide = trailX * sxn + trailY * syn;
+        const forceAlong = trailX * ux + trailY * uy;
+        const flutter = Math.sin(time * 12 + player.runPhase) * clamp(speed / 850, 0, 1);
 
         const pt = (along, side = 0) => ({
           x: grip.x + ux * along + sxn * side,
@@ -1014,16 +1023,16 @@
         };
 
         const hand = pt(0, 0);
-        const chest = pt(18, 5);
-        const head = pt(21, 21);
-        const hip = pt(47, 2);
-        const lean = clamp(tangentSpeed / 900, -1, 1);
-        const kneeA = pt(68, -12 - lean * 10 + flutter * 5);
-        const footA = pt(89, -18 - lean * 17 + flutter * 7);
-        const kneeB = pt(65, 13 - lean * 7 - flutter * 4);
-        const footB = pt(84, 22 - lean * 11 - flutter * 6);
-        const elbowA = pt(10, -8);
-        const elbowB = pt(14, 13);
+        const headSide = sideBlend * 27;
+        const shoulder = pt(25, headSide * 0.10);
+        const head = pt(28, headSide);
+        const hip = pt(62, headSide * 0.10 + forceSide * 0.07);
+        const kneeA = pt(83 + forceAlong * 0.10, -13 + forceSide * 0.35 + flutter * 5);
+        const footA = pt(107 + forceAlong * 0.22, -21 + forceSide * 0.62 + flutter * 8);
+        const kneeB = pt(82 + forceAlong * 0.08, 15 + forceSide * 0.25 - flutter * 4);
+        const footB = pt(104 + forceAlong * 0.18, 23 + forceSide * 0.52 - flutter * 7);
+        const elbowA = pt(12, -8 + headSide * 0.05);
+        const elbowB = pt(15, 10 + headSide * 0.05);
 
         ctx.save();
         ctx.strokeStyle = INK;
@@ -1032,30 +1041,30 @@
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        // Hands clasp the physical rope point. The body is built from the rope
-        // vector, so a full rotation naturally rotates the stick figure with it.
+        // First-principles skeleton: hands are the rope attachment point;
+        // shoulders/torso hang below the hands; the head is attached to the
+        // shoulder joint as a side mass, not used as a body joint itself.
         ctx.beginPath();
-        curve(chest, elbowA, hand);
-        curve(chest, elbowB, hand);
+        curve(shoulder, elbowA, hand);
+        curve(shoulder, elbowB, hand);
+        ctx.stroke();
+
+        ctx.beginPath();
+        line(shoulder, hip);
+        curve(hip, kneeA, footA);
+        curve(hip, kneeB, footB);
+        ctx.stroke();
+
+        ctx.fillStyle = PAPER;
+        ctx.beginPath();
+        ctx.arc(sx(head.x), sy(head.y), 13, 0, Math.PI * 2);
+        ctx.fill();
         ctx.stroke();
 
         ctx.beginPath();
         ctx.arc(sx(hand.x), sy(hand.y), 4, 0, Math.PI * 2);
         ctx.fillStyle = INK;
         ctx.fill();
-
-        ctx.fillStyle = PAPER;
-        ctx.beginPath();
-        ctx.arc(sx(head.x), sy(head.y), 14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Torso and loose trailing legs.
-        ctx.beginPath();
-        line(chest, hip);
-        curve(hip, kneeA, footA);
-        curve(hip, kneeB, footB);
-        ctx.stroke();
 
         ctx.restore();
       }
