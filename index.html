@@ -134,9 +134,11 @@
       const AIR_ACCEL = 620;
       const ROPE_REEL_SPEED = 230;
       const PLAYER_RADIUS = 15;
-      const MIN_ROPE = 110;
+      const MIN_ROPE = 55;
       const MAX_ROPE = 780;
       const GATE_EXTENT = 2400;
+      const LIQUID_BANK_INSET = 18;
+      const LIQUID_SURFACE_STEP = 18;
 
       const player = {
         x: 150,
@@ -220,7 +222,7 @@
         seedBackground();
         generateUntil(W * 2.6);
         player.anchor = anchors[0];
-        player.ropeLength = hypot(player.x - player.anchor.x, player.y - player.anchor.y);
+        player.ropeLength = Math.min(MIN_ROPE * 2, MAX_ROPE);
         player.angle = Math.atan2(player.x - player.anchor.x, player.y - player.anchor.y);
         player.angularVelocity = 0;
         syncAttachedKinematics();
@@ -498,6 +500,17 @@
         stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : 'flying');
       }
 
+      function adjustedRopeLength(oldLength, delta) {
+        const next = oldLength + delta;
+        if (oldLength < MIN_ROPE) {
+          return delta > 0 ? Math.min(next, MIN_ROPE) : oldLength;
+        }
+        if (oldLength > MAX_ROPE) {
+          return delta < 0 ? Math.max(next, MAX_ROPE) : oldLength;
+        }
+        return clamp(next, MIN_ROPE, MAX_ROPE);
+      }
+
       function updateAttachedPhysics(dt, control) {
         // Hybrid arcade/physics solver: this is the older projection-based rope
         // feel, with real gravity and a taut rope constraint. It is less
@@ -533,7 +546,7 @@
         const reel = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
         if (reel) {
           const oldLength = player.ropeLength;
-          player.ropeLength = clamp(player.ropeLength + reel * ROPE_REEL_SPEED * dt, MIN_ROPE, MAX_ROPE);
+          player.ropeLength = adjustedRopeLength(oldLength, reel * ROPE_REEL_SPEED * dt);
           if (player.ropeLength !== oldLength) {
             const tx = -ny;
             const ty = nx;
@@ -613,6 +626,24 @@
         ];
       }
 
+      function liquidSurfaceY(o, localX) {
+        return o.y + Math.sin(time * 3.2 + o.waveOffset + localX * 0.055) * 5;
+      }
+
+      function liquidHitbox(o) {
+        const inset = Math.min(LIQUID_BANK_INSET, o.w * 0.25);
+        const right = o.w - inset;
+        const bottom = o.y + o.h;
+        const points = [];
+        for (let xx = inset; xx < right; xx += LIQUID_SURFACE_STEP) {
+          points.push({ x: o.x + xx, y: liquidSurfaceY(o, xx) });
+        }
+        points.push({ x: o.x + right, y: liquidSurfaceY(o, right) });
+        points.push({ x: o.x + right, y: bottom });
+        points.push({ x: o.x + inset, y: bottom });
+        return { shape: 'polygon', kind: o.type, points };
+      }
+
       function obstacleHitboxes() {
         const hitboxes = [];
         for (const o of obstacles) {
@@ -625,7 +656,7 @@
               r: o.r * 0.86,
             });
           } else if (o.type === 'lava' || o.type === 'water') {
-            hitboxes.push({ shape: 'rect', kind: o.type, x: o.x, y: o.y, w: o.w, h: o.h });
+            hitboxes.push(liquidHitbox(o));
           } else if (o.type === 'gate') {
             const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
             const gap = o.gap * (0.75 + open * 0.40);
@@ -651,7 +682,7 @@
           return circleRect(playerBox.x, playerBox.y, playerBox.r, hitbox.x, hitbox.y, hitbox.w, hitbox.h);
         }
         if (hitbox.shape === 'polygon') {
-          return circleTriangle(playerBox.x, playerBox.y, playerBox.r, hitbox.points);
+          return circlePolygon(playerBox.x, playerBox.y, playerBox.r, hitbox.points);
         }
         return false;
       }
@@ -675,22 +706,28 @@
         return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y + size }];
       }
 
-      function circleTriangle(cx, cy, r, tri) {
-        if (pointInTri({ x: cx, y: cy }, tri[0], tri[1], tri[2])) return true;
-        for (let i = 0; i < 3; i++) {
-          const a = tri[i];
-          const b = tri[(i + 1) % 3];
+      function circlePolygon(cx, cy, r, points) {
+        if (pointInPolygon({ x: cx, y: cy }, points)) return true;
+        for (let i = 0; i < points.length; i++) {
+          const a = points[i];
+          const b = points[(i + 1) % points.length];
           if (distToSegment(cx, cy, a.x, a.y, b.x, b.y) < r) return true;
         }
         return false;
       }
 
-      function pointInTri(p, a, b, c) {
-        const area = (p1, p2, p3) => (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
-        const s1 = area(p, a, b);
-        const s2 = area(p, b, c);
-        const s3 = area(p, c, a);
-        return !((s1 < 0 || s2 < 0 || s3 < 0) && (s1 > 0 || s2 > 0 || s3 > 0));
+      function pointInPolygon(p, points) {
+        let inside = false;
+        for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+          const a = points[i];
+          const b = points[j];
+          const crosses = (a.y > p.y) !== (b.y > p.y);
+          if (crosses) {
+            const x = (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x;
+            if (p.x < x) inside = !inside;
+          }
+        }
+        return inside;
       }
 
       function distToSegment(px, py, ax, ay, bx, by) {
@@ -992,7 +1029,7 @@
         ctx.beginPath();
         ctx.moveTo(sx(o.x), sy(o.y));
         for (let xx = 0; xx <= o.w; xx += 18) {
-          const yy = o.y + Math.sin(time * 3.2 + o.waveOffset + xx * 0.055) * 5;
+          const yy = liquidSurfaceY(o, xx);
           ctx.lineTo(sx(o.x + xx), sy(yy));
         }
         ctx.lineTo(sx(o.x + o.w), sy(bottom));
@@ -1037,7 +1074,7 @@
         ctx.lineWidth = 3;
         ctx.beginPath();
         for (let xx = 14; xx <= o.w - 14; xx += 18) {
-          const yy = o.y + Math.sin(time * 3.2 + o.waveOffset + xx * 0.055) * 5;
+          const yy = liquidSurfaceY(o, xx);
           if (xx === 14) ctx.moveTo(sx(o.x + xx), sy(yy));
           else ctx.lineTo(sx(o.x + xx), sy(yy));
         }
