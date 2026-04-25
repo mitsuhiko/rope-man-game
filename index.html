@@ -36,6 +36,7 @@
       height: 100vh;
       overflow: hidden;
       background: var(--paper);
+      touch-action: none;
     }
 
     canvas {
@@ -44,24 +45,24 @@
       height: 100%;
       background: var(--paper);
       cursor: crosshair;
+      touch-action: none;
     }
 
     .hud {
       position: absolute;
       inset: 0 0 auto auto;
       box-sizing: border-box;
-      width: clamp(190px, 24%, 320px);
-      min-height: clamp(104px, 18%, 150px);
-      padding: clamp(12px, 1.5vw, 20px) clamp(14px, 1.9vw, 26px);
-      border: clamp(5px, 0.5vw, 8px) solid var(--ink);
-      background: var(--paper);
+      width: clamp(132px, 16vw, 220px);
+      padding: clamp(7px, 1vw, 13px) clamp(9px, 1.2vw, 16px);
+      border: 3px solid var(--ink);
+      background: rgba(255, 253, 247, 0.94);
       pointer-events: none;
       user-select: none;
       z-index: 2;
     }
 
     .score-label {
-      font-size: clamp(28px, 3.3vw, 54px);
+      font-size: clamp(22px, 2.35vw, 38px);
       line-height: 0.9;
       font-weight: 900;
       letter-spacing: -0.08em;
@@ -69,31 +70,158 @@
     }
 
     .score-value {
-      margin-top: 7px;
-      font-size: clamp(18px, 2vw, 30px);
+      margin-top: 6px;
+      font-size: clamp(16px, 1.6vw, 24px);
       line-height: 1;
       font-weight: 900;
       letter-spacing: 0.02em;
     }
 
     .score-meta {
-      margin-top: 6px;
+      margin-top: 5px;
       color: var(--muted);
-      font-size: clamp(11px, 1vw, 14px);
-      line-height: 1.25;
+      font-size: clamp(9px, 0.95vw, 13px);
+      line-height: 1.2;
       font-weight: 900;
       letter-spacing: 0.02em;
     }
 
-    @media (max-width: 700px) {
-      .hud {
-        width: 150px;
-        min-height: 78px;
-        padding: 8px 10px;
+    .touch-controls {
+      display: none;
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+      z-index: 3;
+    }
+
+    .touch-action,
+    .touch-joystick {
+      position: absolute;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(18px, 4vw, 34px));
+      width: clamp(112px, 26vw, 168px);
+      height: clamp(112px, 26vw, 168px);
+      box-sizing: border-box;
+      border: 3px solid rgba(0, 0, 0, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 253, 247, 0.04);
+      color: rgba(0, 0, 0, 0.5);
+      pointer-events: auto;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .touch-action {
+      left: calc(env(safe-area-inset-left, 0px) + clamp(18px, 4vw, 34px));
+      padding: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      font: inherit;
+    }
+
+    .touch-action::before {
+      content: "";
+      position: absolute;
+      inset: 23%;
+      border: 2px dashed rgba(0, 0, 0, 0.42);
+      border-radius: 50%;
+    }
+
+    .touch-action::after {
+      content: "HOOK";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: clamp(13px, 3.2vw, 20px);
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .touch-action:active {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.62);
+    }
+
+    .touch-joystick {
+      right: calc(env(safe-area-inset-right, 0px) + clamp(18px, 4vw, 34px));
+    }
+
+    .touch-joystick::before,
+    .touch-joystick::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .touch-joystick::before {
+      left: 18%;
+      right: 18%;
+      top: 50%;
+      border-top: 2px solid rgba(0, 0, 0, 0.28);
+      transform: translateY(-50%);
+    }
+
+    .touch-joystick::after {
+      top: 18%;
+      bottom: 18%;
+      left: 50%;
+      border-left: 2px solid rgba(0, 0, 0, 0.28);
+      transform: translateX(-50%);
+    }
+
+    .touch-joystick-deadzone {
+      position: absolute;
+      inset: 34%;
+      border: 2px solid rgba(0, 0, 0, 0.34);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .touch-stick {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 35%;
+      height: 35%;
+      box-sizing: border-box;
+      border: 3px solid rgba(0, 0, 0, 0.5);
+      border-radius: 50%;
+      background: rgba(255, 253, 247, 0.04);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      transition: transform 0.08s ease-out;
+    }
+
+    .touch-joystick.is-active .touch-stick {
+      border-color: rgba(0, 0, 0, 0.65);
+      transition: none;
+    }
+
+    @media (pointer: coarse), (hover: none) {
+      .touch-controls {
+        display: block;
       }
-      .score-label { font-size: 24px; }
-      .score-value { font-size: 16px; }
-      .score-meta { font-size: 9px; }
+    }
+
+    @media (max-width: 700px), (max-height: 480px) {
+      .hud {
+        width: 112px;
+        padding: 6px 7px;
+      }
+      .score-label { font-size: 19px; }
+      .score-value {
+        margin-top: 4px;
+        font-size: 14px;
+      }
+      .score-meta {
+        margin-top: 3px;
+        font-size: 8px;
+      }
     }
   </style>
 </head>
@@ -105,6 +233,13 @@
       <div class="score-value"><span id="score">0</span>m</div>
       <div class="score-meta">best <span id="best">0</span>m · <span id="state">attached</span></div>
     </section>
+    <div class="touch-controls" aria-label="Touch controls">
+      <button id="touch-action" class="touch-action" type="button" aria-label="Hook or unhook"></button>
+      <div id="touch-joystick" class="touch-joystick" aria-label="Move and reel joystick">
+        <div class="touch-joystick-deadzone"></div>
+        <div id="touch-stick" class="touch-stick"></div>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -114,6 +249,10 @@
       const scoreEl = document.getElementById('score');
       const bestEl = document.getElementById('best');
       const stateEl = document.getElementById('state');
+      const touchControlsEl = document.querySelector('.touch-controls');
+      const touchActionEl = document.getElementById('touch-action');
+      const touchJoystickEl = document.getElementById('touch-joystick');
+      const touchStickEl = document.getElementById('touch-stick');
 
       const INK = '#111111';
       const PAPER = '#fffdf7';
@@ -169,6 +308,7 @@
       const TERRAIN_POOL_STEP = 18;
       const TERRAIN_POOL_SCAN_STEP = 28;
       const SPIKE_GROUND_INSET = 4;
+      const JOYSTICK_DEAD_ZONE = 0.26;
 
       const player = {
         x: 150,
@@ -205,6 +345,7 @@
       let lockedAnchor = null;
       let ropeShot = null;
       const keys = { left: false, right: false, up: false, down: false };
+      const touchInput = { joystickPointerId: null, x: 0, y: 0 };
 
       function resize() {
         DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -228,6 +369,107 @@
       const rand = (a, b) => a + Math.random() * (b - a);
       const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
       const hypot = Math.hypot;
+
+      function inputAxisX() {
+        const keyboard = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+        return clamp(keyboard + touchInput.x, -1, 1);
+      }
+
+      function inputAxisY() {
+        const keyboard = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+        return clamp(keyboard + touchInput.y, -1, 1);
+      }
+
+      function setJoystickVisual(x, y) {
+        if (!touchStickEl) return;
+        touchStickEl.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+      }
+
+      function touchControlsVisible() {
+        return touchControlsEl && getComputedStyle(touchControlsEl).display !== 'none';
+      }
+
+      function resetJoystickInput() {
+        touchInput.joystickPointerId = null;
+        touchInput.x = 0;
+        touchInput.y = 0;
+        setJoystickVisual(0, 0);
+        if (touchJoystickEl) touchJoystickEl.classList.remove('is-active');
+      }
+
+      function updateJoystickInput(e) {
+        if (!touchJoystickEl) return;
+        const rect = touchJoystickEl.getBoundingClientRect();
+        const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = e.clientX - cx;
+        const dy = e.clientY - cy;
+        const distance = hypot(dx, dy);
+        const ux = distance > 0.0001 ? dx / distance : 0;
+        const uy = distance > 0.0001 ? dy / distance : 0;
+        const normalizedDistance = Math.min(distance, radius) / radius;
+
+        if (normalizedDistance <= JOYSTICK_DEAD_ZONE) {
+          touchInput.x = 0;
+          touchInput.y = 0;
+        } else {
+          const scaled = (normalizedDistance - JOYSTICK_DEAD_ZONE) / (1 - JOYSTICK_DEAD_ZONE);
+          touchInput.x = ux * scaled;
+          touchInput.y = uy * scaled;
+        }
+
+        const visualRadius = radius * 0.52;
+        const visualDistance = Math.min(distance, visualRadius);
+        setJoystickVisual(ux * visualDistance, uy * visualDistance);
+      }
+
+      function setupTouchControls() {
+        if (touchActionEl) {
+          touchActionEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            inputAction();
+          }, { passive: false });
+          touchActionEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          });
+        }
+
+        if (touchJoystickEl) {
+          const finishJoystickPointer = (e) => {
+            if (touchInput.joystickPointerId !== e.pointerId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (touchJoystickEl.hasPointerCapture && touchJoystickEl.hasPointerCapture(e.pointerId)) {
+              touchJoystickEl.releasePointerCapture(e.pointerId);
+            }
+            resetJoystickInput();
+          };
+
+          touchJoystickEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (touchInput.joystickPointerId !== null) return;
+            touchInput.joystickPointerId = e.pointerId;
+            if (touchJoystickEl.setPointerCapture) touchJoystickEl.setPointerCapture(e.pointerId);
+            touchJoystickEl.classList.add('is-active');
+            updateJoystickInput(e);
+          }, { passive: false });
+          touchJoystickEl.addEventListener('pointermove', (e) => {
+            if (touchInput.joystickPointerId !== e.pointerId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            updateJoystickInput(e);
+          }, { passive: false });
+          touchJoystickEl.addEventListener('pointerup', finishJoystickPointer, { passive: false });
+          touchJoystickEl.addEventListener('pointercancel', finishJoystickPointer, { passive: false });
+          touchJoystickEl.addEventListener('lostpointercapture', finishJoystickPointer, { passive: false });
+        }
+
+        window.addEventListener('blur', resetJoystickInput);
+      }
 
       function reset() {
         cameraX = 0;
@@ -456,9 +698,11 @@
         }
       });
       window.addEventListener('pointerdown', (e) => {
+        if (e.target.closest && e.target.closest('.touch-controls')) return;
         e.preventDefault();
+        if (e.pointerType === 'touch' && touchControlsVisible()) return;
         inputAction();
-      });
+      }, { passive: false });
 
       function update(dt) {
         time += dt;
@@ -466,7 +710,8 @@
         updateFocus();
 
         if (!gameOver) {
-          const control = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+          const control = inputAxisX();
+          const reel = inputAxisY();
 
           if (ropeShot) {
             ropeShot.t += dt;
@@ -476,7 +721,7 @@
           }
 
           if (player.attached && player.anchor) {
-            updateAttachedPhysics(dt, control);
+            updateAttachedPhysics(dt, control, reel);
           } else {
             if (control) {
               player.vx += control * AIR_ACCEL * dt;
@@ -545,7 +790,7 @@
         return clamp(next, MIN_ROPE, MAX_ROPE);
       }
 
-      function updateAttachedPhysics(dt, control) {
+      function updateAttachedPhysics(dt, control, reel) {
         // Hybrid arcade/physics solver: this is the older projection-based rope
         // feel, with real gravity and a taut rope constraint. It is less
         // mathematically pure than polar coordinates, but it gives the expected
@@ -577,8 +822,7 @@
           player.vy += (-radialAccel * ny) * dt;
         }
 
-        const reel = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-        if (reel) {
+        if (Math.abs(reel) > 0.0001) {
           const oldLength = player.ropeLength;
           player.ropeLength = adjustedRopeLength(oldLength, reel * ROPE_REEL_SPEED * dt);
           if (player.ropeLength !== oldLength) {
@@ -1227,15 +1471,6 @@
           ctx.moveTo(15, -15);
           ctx.lineTo(-15, 15);
           ctx.stroke();
-          if (isFocus || isLocked) {
-            ctx.strokeStyle = ROPE;
-            ctx.globalAlpha = isLocked ? 0.55 + 0.25 * Math.sin(time * 9) : 0.35 + 0.25 * Math.sin(time * 7);
-            ctx.setLineDash(isLocked ? [4, 6] : [8, 8]);
-            ctx.beginPath();
-            ctx.arc(0, 0, isLocked ? 22 + Math.sin(time * 8) * 3 : HOOK_RANGE, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          }
           ctx.restore();
         }
 
@@ -1668,6 +1903,7 @@
         requestAnimationFrame(frame);
       }
 
+      setupTouchControls();
       resize();
       reset();
       bestEl.textContent = best;
