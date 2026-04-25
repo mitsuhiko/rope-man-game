@@ -174,13 +174,13 @@
   }
 
   function hookHandPosition() {
-    if (!hookArm.initialized || player.attached || gameOver) return { x: player.x, y: player.y };
+    if (!hookArm.initialized || gameOver) return { x: player.x, y: player.y };
     return { x: hookArm.x, y: hookArm.y };
   }
 
   function updateHookArmAim(dt) {
     const desired = desiredHookHandPosition();
-    if (!hookArm.initialized || player.attached || gameOver || !ragdoll.initialized || !ragdoll.joints.shoulder) {
+    if (!hookArm.initialized || gameOver || !ragdoll.initialized || !ragdoll.joints.shoulder) {
       hookArm.initialized = true;
       hookArm.x = player.x;
       hookArm.y = player.y;
@@ -200,6 +200,10 @@
     const t = smoothstep01(clamp(dt * 11, 0, 1));
     hookArm.ox += (desiredOx - hookArm.ox) * t;
     hookArm.oy += (desiredOy - hookArm.oy) * t;
+    if (player.attached && hypot(desiredOx - hookArm.ox, desiredOy - hookArm.oy) < 0.5) {
+      hookArm.ox = desiredOx;
+      hookArm.oy = desiredOy;
+    }
     hookArm.x = shoulder.x + hookArm.ox;
     hookArm.y = shoulder.y + hookArm.oy;
   }
@@ -1468,13 +1472,14 @@
 
   function drawRopeAndPlayer() {
     if (player.attached && player.anchor) {
+      const ropeEnd = hookHandPosition();
       ctx.save();
       ctx.strokeStyle = ROPE;
       ctx.lineWidth = 4;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
-      ctx.lineTo(sx(player.x), sy(player.y));
+      ctx.lineTo(sx(ropeEnd.x), sy(ropeEnd.y));
       ctx.stroke();
 
       if (ropeShot && ropeShot.anchor === player.anchor) {
@@ -1483,7 +1488,7 @@
         ctx.lineWidth = 8 - p * 4;
         ctx.beginPath();
         ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
-        ctx.lineTo(sx(player.x), sy(player.y));
+        ctx.lineTo(sx(ropeEnd.x), sy(ropeEnd.y));
         ctx.stroke();
         ctx.globalAlpha = 0.8 - p * 0.5;
         ctx.lineWidth = 3;
