@@ -52,7 +52,10 @@
   const FOCUS_RECENT_ANCHOR_DISTANCE = 520;
   const FOCUS_OUT_OF_RANGE_WEIGHT = 0.7;
   const LOST_BELOW_Y = 1500;
-  const ROPE_SHOT_SPEED = 2600;
+  const ROPE_SHOT_SPEED = 1200;
+  const ROPE_SHOT_MIN_DURATION = 0.14;
+  const ROPE_SHOT_MAX_DURATION = 0.42;
+  const ROPE_ATTACH_GRACE = 70;
   const SWING_ACCEL = 1050;
   const AIR_ACCEL = 620;
   const ROPE_REEL_SPEED = 230;
@@ -374,6 +377,11 @@
   }
 
   function updateFocus() {
+    if (ropeShot) {
+      focusedAnchor = ropeShot.anchor;
+      return;
+    }
+
     const previousFocus = focusedAnchor;
     const speed = hypot(player.vx, player.vy);
     const speedT = clamp(
@@ -437,6 +445,7 @@
       ropeShot = null;
       return;
     }
+    if (ropeShot) return;
     updateFocus();
     const target = focusedAnchor;
     if (target) {
@@ -445,9 +454,10 @@
         ropeShot = {
           anchor: target,
           t: 0,
-          duration: clamp(d / ROPE_SHOT_SPEED, 0.08, 0.24),
+          duration: clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION),
+          fromX: player.x,
+          fromY: player.y,
         };
-        attachToAnchor(target);
       }
     }
   }
@@ -505,9 +515,6 @@
 
       if (ropeShot) {
         ropeShot.t += dt;
-        if (ropeShot.t >= ropeShot.duration) {
-          ropeShot = null;
-        }
       }
 
       if (player.attached && player.anchor) {
@@ -526,6 +533,14 @@
         player.vy += GRAVITY * dt;
         player.x += player.vx * dt;
         player.y += player.vy * dt;
+      }
+
+      if (ropeShot && ropeShot.t >= ropeShot.duration) {
+        const shot = ropeShot;
+        ropeShot = null;
+        if (!player.attached && shot.anchor && hypot(shot.anchor.x - player.x, shot.anchor.y - player.y) <= HOOK_RANGE + ROPE_ATTACH_GRACE) {
+          attachToAnchor(shot.anchor);
+        }
       }
 
       player.runPhase += dt * clamp(hypot(player.vx, player.vy) / 80, 3, 18);
@@ -548,7 +563,7 @@
       }
     }
 
-    anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || a.x > cameraX - 1800);
+    anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || (ropeShot && a === ropeShot.anchor) || a.x > cameraX - 1800);
     obstacles = obstacles.filter(o => (o.x + (o.w || o.r || 0)) > cameraX - 1800);
     pruneTerrain();
     for (const s of bgShapes) {
@@ -566,7 +581,7 @@
     }
     scoreEl.textContent = dist;
     bestEl.textContent = best;
-    stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : 'flying');
+    stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : (ropeShot ? 'hooking' : 'flying'));
   }
 
   function adjustedRopeLength(oldLength, delta) {
@@ -1268,7 +1283,7 @@
       ctx.restore();
     }
 
-    if (!player.attached && focusedAnchor) {
+    if (!player.attached && focusedAnchor && !ropeShot) {
       const d = hypot(focusedAnchor.x - player.x, focusedAnchor.y - player.y);
       ctx.save();
       ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
@@ -1409,6 +1424,49 @@
         ctx.stroke();
       }
 
+      ctx.restore();
+    } else if (ropeShot && ropeShot.anchor) {
+      const p = clamp(ropeShot.t / ropeShot.duration, 0, 1);
+      const tipX = ropeShot.fromX + (ropeShot.anchor.x - ropeShot.fromX) * p;
+      const tipY = ropeShot.fromY + (ropeShot.anchor.y - ropeShot.fromY) * p;
+      ctx.save();
+      const dx = tipX - player.x;
+      const dy = tipY - player.y;
+      const len = Math.max(1, hypot(dx, dy));
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const noseX = tipX;
+      const noseY = tipY;
+      const notchX = tipX - ux * 14;
+      const notchY = tipY - uy * 14;
+      const baseX = tipX - ux * 23;
+      const baseY = tipY - uy * 23;
+      const halfW = 6.5;
+
+      ctx.strokeStyle = ROPE;
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx(player.x), sy(player.y));
+      ctx.lineTo(sx(notchX), sy(notchY));
+      ctx.stroke();
+
+      ctx.fillStyle = '#777777';
+      ctx.strokeStyle = '#777777';
+      ctx.globalAlpha = 0.95;
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx(noseX), sy(noseY));
+      ctx.lineTo(sx(baseX + px * halfW), sy(baseY + py * halfW));
+      ctx.lineTo(sx(notchX), sy(notchY));
+      ctx.lineTo(sx(baseX - px * halfW), sy(baseY - py * halfW));
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
       ctx.restore();
     }
     drawStickman();
