@@ -20,6 +20,7 @@
   const SAW = '#b9b9b9';
   const BG1 = '#eeeeee';
   const BG2 = '#dddddd';
+  const BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 
   const W = 1280;
   const H = 720;
@@ -37,8 +38,9 @@
   let cameraVY = 0;
   let gameOver = false;
   let furthestX = 0;
+  let scoreStartX = 0;
   const DEBUG_HITBOXES = new URLSearchParams(window.location.search).get('debug') === '1';
-  let best = Number(localStorage.getItem('ropeDashBest') || 0);
+  let best = Number(localStorage.getItem(BEST_SCORE_KEY) || 0);
 
   const GRAVITY = 1500;
   const HOOK_RANGE = 720;
@@ -60,6 +62,11 @@
   const AIR_ACCEL = 620;
   const ROPE_REEL_SPEED = 230;
   const PLAYER_RADIUS = 15;
+  // Score is shown in meters. Calibrate world pixels from the stickman's
+  // approximate head-to-foot height instead of treating 10px as 1m.
+  const PLAYER_HEIGHT_METERS = 1.7;
+  const PLAYER_VISUAL_HEIGHT_PX = 124;
+  const WORLD_PX_PER_METER = PLAYER_VISUAL_HEIGHT_PX / PLAYER_HEIGHT_METERS;
   const HOOK_ARM_REACH = 38;
   const INITIAL_SPAWN_ROPE_LENGTH = 150;
   const INITIAL_SPAWN_ANGLE = 0.10;
@@ -319,6 +326,7 @@
     time = 0;
     gameOver = false;
     furthestX = 0;
+    scoreStartX = 0;
     anchors = [];
     obstacles = [];
     bgShapes = [];
@@ -355,6 +363,8 @@
     player.angle = INITIAL_SPAWN_ANGLE;
     player.angularVelocity = 0;
     syncAttachedKinematics();
+    scoreStartX = player.x;
+    furthestX = player.x;
     hookArm.x = player.x;
     hookArm.y = player.y;
     cameraX = player.x - W * 0.42;
@@ -647,10 +657,10 @@
     }
 
     furthestX = Math.max(furthestX, player.x);
-    const dist = Math.max(0, Math.floor(furthestX / 10));
+    const dist = Math.max(0, Math.floor((furthestX - scoreStartX) / WORLD_PX_PER_METER));
     if (dist > best) {
       best = dist;
-      localStorage.setItem('ropeDashBest', String(best));
+      localStorage.setItem(BEST_SCORE_KEY, String(best));
     }
     scoreEl.textContent = dist;
     bestEl.textContent = best;
