@@ -61,6 +61,8 @@
   const ROPE_REEL_SPEED = 230;
   const PLAYER_RADIUS = 15;
   const HOOK_ARM_REACH = 38;
+  const INITIAL_SPAWN_ROPE_LENGTH = 150;
+  const INITIAL_SPAWN_ANGLE = 0.10;
   const MIN_ROPE = 55;
   const MAX_ROPE = 780;
   const GATE_EXTENT = 2400;
@@ -345,16 +347,16 @@
     player.attached = true;
     player.alive = true;
     player.runPhase = 0;
-    hookArm.x = player.x;
-    hookArm.y = player.y;
 
     seedBackground();
     generateUntil(W * 2.6);
     player.anchor = anchors[0];
-    player.ropeLength = Math.min(MIN_ROPE * 2, MAX_ROPE);
-    player.angle = Math.atan2(player.x - player.anchor.x, player.y - player.anchor.y);
+    player.ropeLength = clamp(INITIAL_SPAWN_ROPE_LENGTH, MIN_ROPE, MAX_ROPE);
+    player.angle = INITIAL_SPAWN_ANGLE;
     player.angularVelocity = 0;
     syncAttachedKinematics();
+    hookArm.x = player.x;
+    hookArm.y = player.y;
     cameraX = player.x - W * 0.42;
     cameraY = player.y - H * 0.52;
   }
