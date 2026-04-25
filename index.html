@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rope Dash Spike</title>
+  <style>
+    :root {
+      --ink: #111111;
+      --paper: #fffdf7;
+      --muted: #7b7b7b;
+      --rope: #8b5a2b;
+      --spike: #d82424;
+      --lava: #ff6a21;
+      --water: #2f9bff;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: var(--paper);
+      cursor: crosshair;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 18px 18px auto 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      pointer-events: none;
+      user-select: none;
+      mix-blend-mode: multiply;
+    }
+
+    .panel {
+      border: 2px solid var(--ink);
+      background: transparent;
+      padding: 10px 12px;
+      box-shadow: none;
+    }
+
+    .score {
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+    }
+
+    .help {
+      max-width: min(460px, 55vw);
+      font-size: 12px;
+      line-height: 1.45;
+      text-align: right;
+    }
+
+    .help b { text-transform: uppercase; }
+
+    @media (max-width: 700px) {
+      .hud { inset: 10px; }
+      .help { display: none; }
+      .score { font-size: 15px; }
+      .panel { padding: 8px 9px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Rope Dash canvas game"></canvas>
+  <div class="hud">
+    <div class="panel score">
+      <div>distance <span id="score">0</span>m</div>
+      <div>best <span id="best">0</span>m</div>
+      <div id="state">attached</div>
+    </div>
+    <div class="panel help">
+      <b>← / →</b>: lean into the swing. <b>↑ / ↓</b>: shorten / lengthen rope. <b>Space / click / tap</b>: release / hook.<br />
+      Worms-style ninja rope: pump momentum with swing and rope length, clear gates, avoid spikes, saws, lava and water. <b>R</b>: restart.
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const scoreEl = document.getElementById('score');
+      const bestEl = document.getElementById('best');
+      const stateEl = document.getElementById('state');
+
+      const INK = '#111111';
+      const PAPER = '#fffdf7';
+      const ROPE = '#8b5a2b';
+      const SPIKE = '#d82424';
+      const LAVA = '#ff6a21';
+      const LAVA_LINE = '#b83d12';
+      const WATER = '#2f9bff';
+      const WATER_LINE = '#1668ad';
+      const SAW = '#b9b9b9';
+      const BG1 = '#eeeeee';
+      const BG2 = '#dddddd';
+
+      const W = 1280;
+      const H = 720;
+      let screenW = 0;
+      let screenH = 0;
+      let viewportScale = 1;
+      let viewportX = 0;
+      let viewportY = 0;
+      let DPR = 1;
+      let last = 0;
+      let time = 0;
+      let cameraX = 0;
+      let cameraY = 0;
+      let cameraVX = 0;
+      let cameraVY = 0;
+      let gameOver = false;
+      let furthestX = 0;
+      let best = Number(localStorage.getItem('ropeDashBest') || 0);
+
+      const GRAVITY = 1500;
+      const HOOK_RANGE = 720;
+      const ROPE_SHOT_SPEED = 2600;
+      const SWING_ACCEL = 1050;
+      const AIR_ACCEL = 620;
+      const ROPE_REEL_SPEED = 230;
+      const PLAYER_RADIUS = 15;
+      const MIN_ROPE = 110;
+      const MAX_ROPE = 780;
+
+      const player = {
+        x: 150,
+        y: 260,
+        vx: 0,
+        vy: 0,
+        attached: true,
+        anchor: null,
+        ropeLength: 190,
+        alive: true,
+        runPhase: 0,
+      };
+
+      let anchors = [];
+      let obstacles = [];
+      let bgShapes = [];
+      let nextAnchorX = 120;
+      let nextObstacleX = 950;
+      let spawnIndex = 0;
+      let focusedAnchor = null;
+      let lockedAnchor = null;
+      let ropeShot = null;
+      const keys = { left: false, right: false, up: false, down: false };
+
+      function resize() {
+        DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        screenW = Math.floor(window.innerWidth);
+        screenH = Math.floor(window.innerHeight);
+        canvas.width = Math.floor(screenW * DPR);
+        canvas.height = Math.floor(screenH * DPR);
+
+        // Fixed logical game viewport: resizing the browser changes only the
+        // pixel scale, not the amount of world visible or the level geometry.
+        viewportScale = Math.min(screenW / W, screenH / H);
+        viewportX = (screenW - W * viewportScale) / 2;
+        viewportY = (screenH - H * viewportScale) / 2;
+      }
+      window.addEventListener('resize', resize);
+
+      const rand = (a, b) => a + Math.random() * (b - a);
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+      const hypot = Math.hypot;
+
+      function reset() {
+        cameraX = 0;
+        cameraY = 0;
+        cameraVX = 0;
+        cameraVY = 0;
+        time = 0;
+        gameOver = false;
+        furthestX = 0;
+        anchors = [];
+        obstacles = [];
+        bgShapes = [];
+        nextAnchorX = 120;
+        nextObstacleX = 950;
+        spawnIndex = 0;
+        focusedAnchor = null;
+        lockedAnchor = null;
+        ropeShot = null;
+
+        player.x = 150;
+        player.y = Math.min(270, H * 0.45);
+        player.vx = 0;
+        player.vy = 0;
+        player.attached = true;
+        player.alive = true;
+        player.runPhase = 0;
+
+        seedBackground();
+        generateUntil(W * 2.6);
+        player.anchor = anchors[0];
+        player.ropeLength = hypot(player.x - player.anchor.x, player.y - player.anchor.y);
+        cameraX = player.x - W * 0.42;
+        cameraY = player.y - H * 0.52;
+      }
+
+      function seedBackground() {
+        for (let i = 0; i < 80; i++) {
+          bgShapes.push(makeBgShape(rand(-300, W * 5)));
+        }
+      }
+
+      function makeBgShape(x) {
+        return {
+          x,
+          y: rand(80, Math.max(180, H - 120)),
+          size: rand(18, 86),
+          sides: Math.floor(rand(0, 4)),
+          shade: Math.random() < 0.5 ? BG1 : BG2,
+          layer: Math.random() < 0.55 ? 0.28 : 0.48,
+          rot: rand(0, Math.PI),
+        };
+      }
+
+      function addAnchor(x, y) {
+        anchors.push({ id: anchors.length + 1, x, y, r: 8 });
+      }
+
+      function generateUntil(worldX) {
+        while (nextAnchorX < worldX) {
+          const difficulty = clamp(nextAnchorX / 5000, 0, 1);
+          const gap = rand(260, 420 + difficulty * 90);
+          const wave = Math.sin(nextAnchorX / 680) * 95;
+          const y = clamp(rand(95 + wave, 315 + wave + difficulty * 80), -160, H * 0.58);
+          addAnchor(nextAnchorX, y);
+          nextAnchorX += gap;
+        }
+
+        while (nextObstacleX < worldX) {
+          spawnObstacleCluster(nextObstacleX, spawnIndex++);
+          nextObstacleX += rand(650, 980);
+        }
+      }
+
+      function spawnObstacleCluster(x, i) {
+        const difficulty = clamp(x / 5500, 0, 1);
+        const roll = Math.random();
+        const floorY = H - 84;
+
+        if (i < 1) {
+          obstacles.push({ type: 'gate', x, w: 26, gapY: H * 0.54, gap: 360, phase: rand(0, Math.PI * 2), speed: 0.65 });
+          return;
+        }
+
+        if (roll < 0.20) {
+          obstacles.push({
+            type: 'gate',
+            x,
+            w: 28,
+            gapY: rand(H * 0.38, H * 0.64),
+            gap: rand(300 - difficulty * 45, 390 - difficulty * 40),
+            phase: rand(0, Math.PI * 2),
+            speed: rand(0.55, 1.15 + difficulty * 0.25),
+          });
+        } else if (roll < 0.48) {
+          obstacles.push({
+            type: 'saw',
+            x,
+            y: rand(H * 0.30, H * 0.66),
+            r: rand(24, 38),
+            spin: rand(-1, 1) < 0 ? -1 : 1,
+            bob: rand(95, 180),
+            phase: rand(0, Math.PI * 2),
+          });
+        } else if (roll < 0.79) {
+          const kind = Math.random() < 0.55 ? 'lava' : 'water';
+          obstacles.push({
+            type: kind,
+            x,
+            y: floorY - rand(18, 38),
+            w: rand(380, 680),
+            h: 760,
+            leftHill: rand(70, 135),
+            rightHill: rand(70, 135),
+            waveOffset: rand(0, Math.PI * 2),
+          });
+          if (Math.random() < 0.45) {
+            obstacles.push({ type: 'spikes', x: x + rand(60, 190), y: floorY - 22, count: Math.floor(rand(2, 5)), dir: -1, size: 24 });
+          }
+        } else {
+          const ceiling = Math.random() < 0.35;
+          obstacles.push({
+            type: 'spikes',
+            x,
+            y: ceiling ? 34 : floorY - 8,
+            count: Math.floor(rand(4, 9)),
+            dir: ceiling ? 1 : -1,
+            size: rand(22, 31),
+          });
+        }
+      }
+
+      function updateFocus() {
+        if (!player.attached && lockedAnchor) {
+          focusedAnchor = lockedAnchor;
+          return;
+        }
+
+        const candidates = anchors.filter(a => a !== player.anchor && a.x > player.x + 55);
+        let bestAnchor = null;
+        let bestScore = -Infinity;
+        const speed = Math.max(80, hypot(player.vx, player.vy));
+        const vx = player.vx / speed;
+        const vy = player.vy / speed;
+
+        for (const a of candidates) {
+          const dx = a.x - player.x;
+          const dy = a.y - player.y;
+          const d = Math.max(1, hypot(dx, dy));
+          const direction = (dx / d) * vx + (dy / d) * vy;
+          let score = 0;
+          score -= d * 0.006;
+          score += dx > 0 ? 1.1 : -3.5;
+          score += direction * 1.4;
+          if (d <= HOOK_RANGE) score += 2.5;
+          if (a === focusedAnchor) score += 2.2; // targeting stickiness
+          if (a === lockedAnchor) score += 5;
+          if (score > bestScore) {
+            bestScore = score;
+            bestAnchor = a;
+          }
+        }
+        focusedAnchor = bestAnchor || null;
+      }
+
+      function inputAction() {
+        if (gameOver) {
+          reset();
+          return;
+        }
+        if (player.attached) {
+          updateFocus();
+          lockedAnchor = focusedAnchor;
+          player.attached = false;
+          player.anchor = null;
+          ropeShot = null;
+          return;
+        }
+        updateFocus();
+        const target = lockedAnchor || focusedAnchor;
+        if (target) {
+          const d = hypot(target.x - player.x, target.y - player.y);
+          if (d <= HOOK_RANGE) {
+            ropeShot = {
+              anchor: target,
+              t: 0,
+              duration: clamp(d / ROPE_SHOT_SPEED, 0.08, 0.24),
+            };
+            attachToAnchor(target);
+          }
+        }
+      }
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          inputAction();
+        } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+          e.preventDefault();
+          keys.left = true;
+        } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+          e.preventDefault();
+          keys.right = true;
+        } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+          e.preventDefault();
+          keys.up = true;
+        } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+          e.preventDefault();
+          keys.down = true;
+        } else if (e.code === 'KeyR') {
+          reset();
+        }
+      });
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+          e.preventDefault();
+          keys.left = false;
+        } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+          e.preventDefault();
+          keys.right = false;
+        } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+          e.preventDefault();
+          keys.up = false;
+        } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+          e.preventDefault();
+          keys.down = false;
+        }
+      });
+      window.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        inputAction();
+      });
+
+      function update(dt) {
+        time += dt;
+        generateUntil(Math.max(cameraX + W * 2.8, player.x + W * 2.8));
+        updateFocus();
+
+        if (!gameOver) {
+          const control = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+          if (control) {
+            player.vx += control * (player.attached ? SWING_ACCEL : AIR_ACCEL) * dt;
+          }
+
+          const speed = hypot(player.vx, player.vy);
+          const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
+          const drag = Math.exp(-nonlinearDrag * dt);
+          player.vx *= drag;
+          player.vy *= drag;
+
+          player.vy += GRAVITY * dt;
+          player.x += player.vx * dt;
+          player.y += player.vy * dt;
+
+          if (ropeShot) {
+            ropeShot.t += dt;
+            if (ropeShot.t >= ropeShot.duration) {
+              ropeShot = null;
+            }
+          }
+
+          if (player.attached && player.anchor) {
+            const dx = player.x - player.anchor.x;
+            const dy = player.y - player.anchor.y;
+            const d = Math.max(0.0001, hypot(dx, dy));
+            const nx = dx / d;
+            const ny = dy / d;
+
+            const reel = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+            if (reel) {
+              const oldLength = player.ropeLength;
+              player.ropeLength = clamp(player.ropeLength + reel * ROPE_REEL_SPEED * dt, MIN_ROPE, MAX_ROPE);
+              if (player.ropeLength !== oldLength) {
+                // Worms-style rope pumping: shortening the rope conserves angular
+                // momentum and adds speed; lengthening bleeds speed back out.
+                const tx = -ny;
+                const ty = nx;
+                const tangentSpeed = player.vx * tx + player.vy * ty;
+                const radialSpeed = player.vx * nx + player.vy * ny;
+                const energyScale = clamp(oldLength / player.ropeLength, 0.985, 1.018);
+                player.vx = tx * tangentSpeed * energyScale + nx * radialSpeed;
+                player.vy = ty * tangentSpeed * energyScale + ny * radialSpeed;
+              }
+            }
+
+            player.x = player.anchor.x + nx * player.ropeLength;
+            player.y = player.anchor.y + ny * player.ropeLength;
+            const radial = player.vx * nx + player.vy * ny;
+            player.vx -= radial * nx;
+            player.vy -= radial * ny;
+          }
+
+          player.runPhase += dt * clamp(hypot(player.vx, player.vy) / 80, 3, 18);
+
+          const targetCameraX = player.x + clamp(player.vx * 0.18, -300, 420) - W * 0.44;
+          const targetCameraY = player.y + clamp(player.vy * 0.10, -220, 220) - H * 0.52;
+          const stiffness = 44;
+          const damping = 13;
+          cameraVX += (targetCameraX - cameraX) * stiffness * dt;
+          cameraVY += (targetCameraY - cameraY) * stiffness * dt;
+          cameraVX *= Math.exp(-damping * dt);
+          cameraVY *= Math.exp(-damping * dt);
+          cameraX += cameraVX * dt;
+          cameraY += cameraVY * dt;
+
+          if (player.y > H + 90 || hitsObstacle()) {
+            die();
+          }
+        }
+
+        anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || a.x > cameraX - 1800);
+        obstacles = obstacles.filter(o => (o.x + (o.w || o.r || 0)) > cameraX - 1800);
+        for (const s of bgShapes) {
+          const sx = s.x - cameraX * s.layer;
+          if (sx < -180) {
+            Object.assign(s, makeBgShape(cameraX * s.layer + W + rand(100, 900)));
+          }
+        }
+
+        furthestX = Math.max(furthestX, player.x);
+        const dist = Math.max(0, Math.floor(furthestX / 10));
+        if (dist > best) {
+          best = dist;
+          localStorage.setItem('ropeDashBest', String(best));
+        }
+        scoreEl.textContent = dist;
+        bestEl.textContent = best;
+        stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : 'flying');
+      }
+
+      function attachToAnchor(anchor) {
+        const d = Math.max(0.0001, hypot(anchor.x - player.x, anchor.y - player.y));
+        player.attached = true;
+        player.anchor = anchor;
+        lockedAnchor = null;
+        player.ropeLength = clamp(d, MIN_ROPE, MAX_ROPE);
+        // Keep momentum, but soften only the outward component that would make
+        // the new long rope snap taut too violently on the first frame.
+        const nx = (player.x - player.anchor.x) / d;
+        const ny = (player.y - player.anchor.y) / d;
+        const radial = player.vx * nx + player.vy * ny;
+        if (radial > 0) {
+          player.vx -= radial * nx * 0.35;
+          player.vy -= radial * ny * 0.35;
+        }
+      }
+
+      function die() {
+        gameOver = true;
+        player.attached = false;
+        player.anchor = null;
+        lockedAnchor = null;
+        ropeShot = null;
+      }
+
+      function hitsObstacle() {
+        const px = player.x;
+        const py = player.y;
+        const r = PLAYER_RADIUS;
+        const floorY = H - 84;
+        if (py > floorY + 65) return true;
+
+        for (const o of obstacles) {
+          if (o.type === 'saw') {
+            const cy = o.y + Math.sin(time * 1.8 + o.phase) * o.bob;
+            if (hypot(px - o.x, py - cy) < r + o.r * 0.86) return true;
+          } else if (o.type === 'lava' || o.type === 'water') {
+            if (circleRect(px, py, r, o.x, o.y, o.w, o.h)) return true;
+          } else if (o.type === 'gate') {
+            const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
+            const gap = o.gap * (0.75 + open * 0.40);
+            const top = o.gapY - gap / 2;
+            const bottom = o.gapY + gap / 2;
+            if (circleRect(px, py, r, o.x, 0, o.w, top) || circleRect(px, py, r, o.x, bottom, o.w, H - bottom)) return true;
+          } else if (o.type === 'spikes') {
+            for (let i = 0; i < o.count; i++) {
+              const x = o.x + i * o.size;
+              const tri = spikeTri(x, o.y, o.size, o.dir);
+              if (circleTriangle(px, py, r, tri)) return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      function circleRect(cx, cy, cr, rx, ry, rw, rh) {
+        if (rw <= 0 || rh <= 0) return false;
+        const nx = clamp(cx, rx, rx + rw);
+        const ny = clamp(cy, ry, ry + rh);
+        return hypot(cx - nx, cy - ny) < cr;
+      }
+
+      function spikeTri(x, y, size, dir) {
+        if (dir < 0) {
+          return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y - size }];
+        }
+        return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y + size }];
+      }
+
+      function circleTriangle(cx, cy, r, tri) {
+        if (pointInTri({ x: cx, y: cy }, tri[0], tri[1], tri[2])) return true;
+        for (let i = 0; i < 3; i++) {
+          const a = tri[i];
+          const b = tri[(i + 1) % 3];
+          if (distToSegment(cx, cy, a.x, a.y, b.x, b.y) < r) return true;
+        }
+        return false;
+      }
+
+      function pointInTri(p, a, b, c) {
+        const area = (p1, p2, p3) => (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
+        const s1 = area(p, a, b);
+        const s2 = area(p, b, c);
+        const s3 = area(p, c, a);
+        return !((s1 < 0 || s2 < 0 || s3 < 0) && (s1 > 0 || s2 > 0 || s3 > 0));
+      }
+
+      function distToSegment(px, py, ax, ay, bx, by) {
+        const vx = bx - ax;
+        const vy = by - ay;
+        const wx = px - ax;
+        const wy = py - ay;
+        const c = clamp((wx * vx + wy * vy) / (vx * vx + vy * vy), 0, 1);
+        return hypot(px - (ax + vx * c), py - (ay + vy * c));
+      }
+
+      function sx(x) { return x - cameraX; }
+      function sy(y) { return y - cameraY; }
+
+      function draw() {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        ctx.clearRect(0, 0, screenW, screenH);
+        ctx.fillStyle = PAPER;
+        ctx.fillRect(0, 0, screenW, screenH);
+
+        ctx.setTransform(DPR * viewportScale, 0, 0, DPR * viewportScale, DPR * viewportX, DPR * viewportY);
+        ctx.fillStyle = PAPER;
+        ctx.fillRect(0, 0, W, H);
+
+        drawBackground();
+        drawHorizon();
+        drawObstacles();
+        drawAnchors();
+        drawRopeAndPlayer();
+
+        if (gameOver) drawCrashCard();
+      }
+
+      function drawBackground() {
+        ctx.save();
+        for (const s of bgShapes) {
+          const x = s.x - cameraX * s.layer;
+          const y = s.y - cameraY * s.layer * 0.35;
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(s.rot + time * 0.02 * (s.layer + 0.3));
+          ctx.strokeStyle = s.shade;
+          ctx.fillStyle = 'transparent';
+          ctx.lineWidth = 2;
+          if (s.sides === 0) {
+            ctx.strokeRect(-s.size / 2, -s.size / 2, s.size, s.size);
+          } else if (s.sides === 1) {
+            ctx.beginPath();
+            ctx.arc(0, 0, s.size / 2, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (s.sides === 2) {
+            ctx.beginPath();
+            ctx.moveTo(0, -s.size / 2);
+            ctx.lineTo(s.size / 2, s.size / 2);
+            ctx.lineTo(-s.size / 2, s.size / 2);
+            ctx.closePath();
+            ctx.stroke();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(-s.size / 2, 0);
+            ctx.lineTo(s.size / 2, 0);
+            ctx.moveTo(0, -s.size / 2);
+            ctx.lineTo(0, s.size / 2);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      function drawHorizon() {
+        const floorY = H - 84;
+        ctx.save();
+        ctx.strokeStyle = '#cfcfcf';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([12, 18]);
+        ctx.beginPath();
+        ctx.moveTo(0, sy(floorY));
+        ctx.lineTo(W, sy(floorY));
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawAnchors() {
+        for (const a of anchors) {
+          const x = sx(a.x);
+          if (x < -50 || x > W + 80) continue;
+          const isFocus = a === focusedAnchor;
+          const isLocked = a === lockedAnchor;
+          ctx.save();
+          ctx.translate(x, sy(a.y));
+          ctx.lineWidth = isLocked ? 5 : (isFocus ? 4 : 2);
+          ctx.strokeStyle = isLocked ? ROPE : INK;
+          ctx.fillStyle = PAPER;
+          ctx.beginPath();
+          ctx.arc(0, 0, isLocked ? 15 : (isFocus ? 12 : 8), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-15, -15);
+          ctx.lineTo(15, 15);
+          ctx.moveTo(15, -15);
+          ctx.lineTo(-15, 15);
+          ctx.stroke();
+          if (isFocus || isLocked) {
+            ctx.strokeStyle = ROPE;
+            ctx.globalAlpha = isLocked ? 0.55 + 0.25 * Math.sin(time * 9) : 0.35 + 0.25 * Math.sin(time * 7);
+            ctx.setLineDash(isLocked ? [4, 6] : [8, 8]);
+            ctx.beginPath();
+            ctx.arc(0, 0, isLocked ? 22 + Math.sin(time * 8) * 3 : HOOK_RANGE, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          ctx.restore();
+        }
+
+        if (!player.attached && focusedAnchor) {
+          const d = hypot(focusedAnchor.x - player.x, focusedAnchor.y - player.y);
+          ctx.save();
+          ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+          ctx.globalAlpha = d <= HOOK_RANGE ? 0.85 : 0.35;
+          ctx.lineWidth = lockedAnchor ? 3 : 2;
+          ctx.setLineDash(d <= HOOK_RANGE ? [9, 7] : [4, 10]);
+          ctx.beginPath();
+          ctx.moveTo(sx(player.x), sy(player.y));
+          ctx.lineTo(sx(focusedAnchor.x), sy(focusedAnchor.y));
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (lockedAnchor) {
+            ctx.fillStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+            ctx.beginPath();
+            ctx.arc(sx(focusedAnchor.x), sy(focusedAnchor.y), 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      }
+
+      function drawObstacles() {
+        for (const o of obstacles) {
+          if (o.type === 'gate') drawGate(o);
+          else if (o.type === 'saw') drawSaw(o);
+          else if (o.type === 'spikes') drawSpikes(o);
+          else drawLiquid(o);
+        }
+      }
+
+      function drawGate(o) {
+        const x = sx(o.x);
+        const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
+        const gap = o.gap * (0.75 + open * 0.40);
+        const top = o.gapY - gap / 2;
+        const bottom = o.gapY + gap / 2;
+        ctx.save();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = INK;
+        ctx.fillStyle = PAPER;
+        drawBar(x, 0, o.w, top);
+        drawBar(x, bottom, o.w, H - bottom);
+        ctx.strokeStyle = '#777';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - 14, sy(top));
+        ctx.lineTo(x + o.w + 14, sy(top));
+        ctx.moveTo(x - 14, sy(bottom));
+        ctx.lineTo(x + o.w + 14, sy(bottom));
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawBar(x, y, w, h) {
+        if (h <= 0) return;
+        ctx.fillRect(x, sy(y), w, h);
+        ctx.strokeRect(x, sy(y), w, h);
+        for (let yy = y + 14; yy < y + h; yy += 22) {
+          ctx.beginPath();
+          ctx.moveTo(x, sy(yy));
+          ctx.lineTo(x + w, sy(yy - 12));
+          ctx.stroke();
+        }
+      }
+
+      function drawSaw(o) {
+        const x = sx(o.x);
+        const y = sy(o.y + Math.sin(time * 1.8 + o.phase) * o.bob);
+        const rot = time * 8 * o.spin;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rot);
+        ctx.fillStyle = SAW;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        const teeth = 14;
+        for (let i = 0; i < teeth * 2; i++) {
+          const a = i / (teeth * 2) * Math.PI * 2;
+          const r = i % 2 === 0 ? o.r : o.r * 0.72;
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, o.r * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = PAPER;
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawSpikes(o) {
+        ctx.save();
+        ctx.fillStyle = SPIKE;
+        ctx.strokeStyle = SPIKE;
+        ctx.lineWidth = 2.5;
+        for (let i = 0; i < o.count; i++) {
+          const tri = spikeTri(o.x + i * o.size, o.y, o.size, o.dir);
+          ctx.beginPath();
+          ctx.moveTo(sx(tri[0].x), sy(tri[0].y));
+          ctx.lineTo(sx(tri[1].x), sy(tri[1].y));
+          ctx.lineTo(sx(tri[2].x), sy(tri[2].y));
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawLiquid(o) {
+        const isLava = o.type === 'lava';
+        const fill = isLava ? LAVA : WATER;
+        const line = isLava ? LAVA_LINE : WATER_LINE;
+        const bottom = o.y + o.h;
+        const leftBank = o.x - 190;
+        const rightBank = o.x + o.w + 190;
+        const leftHill = o.leftHill || 100;
+        const rightHill = o.rightHill || 100;
+
+        ctx.save();
+
+        // Deep puddle body. It extends far below the visible play field so it
+        // reads as a pool/ocean pocket rather than a floating rectangle.
+        ctx.fillStyle = fill;
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sx(o.x), sy(o.y));
+        for (let xx = 0; xx <= o.w; xx += 18) {
+          const yy = o.y + Math.sin(time * 3.2 + o.waveOffset + xx * 0.055) * 5;
+          ctx.lineTo(sx(o.x + xx), sy(yy));
+        }
+        ctx.lineTo(sx(o.x + o.w), sy(bottom));
+        ctx.lineTo(sx(o.x), sy(bottom));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Paper-colored land banks drawn over the liquid edges. The Bezier
+        // curves make the pool look carved into hilly ground.
+        ctx.fillStyle = PAPER;
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sx(leftBank), sy(bottom));
+        ctx.lineTo(sx(leftBank), sy(o.y + 85));
+        ctx.bezierCurveTo(
+          sx(o.x - 155), sy(o.y - leftHill),
+          sx(o.x - 65), sy(o.y - leftHill * 0.75),
+          sx(o.x + 12), sy(o.y + 7)
+        );
+        ctx.lineTo(sx(o.x + 12), sy(bottom));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(sx(o.x + o.w - 12), sy(bottom));
+        ctx.lineTo(sx(o.x + o.w - 12), sy(o.y + 7));
+        ctx.bezierCurveTo(
+          sx(o.x + o.w + 65), sy(o.y - rightHill * 0.75),
+          sx(o.x + o.w + 155), sy(o.y - rightHill),
+          sx(rightBank), sy(o.y + 85)
+        );
+        ctx.lineTo(sx(rightBank), sy(bottom));
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Re-draw a lively surface line on top of the banks.
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let xx = 14; xx <= o.w - 14; xx += 18) {
+          const yy = o.y + Math.sin(time * 3.2 + o.waveOffset + xx * 0.055) * 5;
+          if (xx === 14) ctx.moveTo(sx(o.x + xx), sy(yy));
+          else ctx.lineTo(sx(o.x + xx), sy(yy));
+        }
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawRopeAndPlayer() {
+        if (player.attached && player.anchor) {
+          ctx.save();
+          ctx.strokeStyle = ROPE;
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
+          ctx.lineTo(sx(player.x), sy(player.y));
+          ctx.stroke();
+
+          if (ropeShot && ropeShot.anchor === player.anchor) {
+            const p = clamp(ropeShot.t / ropeShot.duration, 0, 1);
+            ctx.globalAlpha = 1 - p;
+            ctx.lineWidth = 8 - p * 4;
+            ctx.beginPath();
+            ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
+            ctx.lineTo(sx(player.x), sy(player.y));
+            ctx.stroke();
+            ctx.globalAlpha = 0.8 - p * 0.5;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(sx(player.anchor.x), sy(player.anchor.y), 13 + p * 22, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+        drawStickman();
+      }
+
+      function drawStickman() {
+        const grip = { x: player.x, y: player.y };
+        let ux, uy;
+
+        if (player.attached && player.anchor) {
+          const dx = player.x - player.anchor.x;
+          const dy = player.y - player.anchor.y;
+          const d = Math.max(1, hypot(dx, dy));
+          ux = dx / d;
+          uy = dy / d;
+        } else {
+          const speed = Math.max(1, hypot(player.vx, player.vy));
+          ux = clamp(player.vx / speed, -0.9, 0.9);
+          uy = clamp(player.vy / speed + 0.35, -0.7, 1);
+          const d = Math.max(1, hypot(ux, uy));
+          ux /= d;
+          uy /= d;
+        }
+
+        const tx = -uy;
+        const ty = ux;
+        const tangentSpeed = player.vx * tx + player.vy * ty;
+        const sideSign = tangentSpeed >= 0 ? 1 : -1;
+        const sxn = tx * sideSign;
+        const syn = ty * sideSign;
+        const flutter = Math.sin(time * 12 + player.runPhase) * 0.5;
+
+        const pt = (along, side = 0) => ({
+          x: grip.x + ux * along + sxn * side,
+          y: grip.y + uy * along + syn * side,
+        });
+        const line = (a, b) => {
+          ctx.moveTo(sx(a.x), sy(a.y));
+          ctx.lineTo(sx(b.x), sy(b.y));
+        };
+        const curve = (a, c, b) => {
+          ctx.moveTo(sx(a.x), sy(a.y));
+          ctx.quadraticCurveTo(sx(c.x), sy(c.y), sx(b.x), sy(b.y));
+        };
+
+        const hand = pt(0, 0);
+        const chest = pt(18, 5);
+        const head = pt(21, 21);
+        const hip = pt(47, 2);
+        const lean = clamp(tangentSpeed / 900, -1, 1);
+        const kneeA = pt(68, -12 - lean * 10 + flutter * 5);
+        const footA = pt(89, -18 - lean * 17 + flutter * 7);
+        const kneeB = pt(65, 13 - lean * 7 - flutter * 4);
+        const footB = pt(84, 22 - lean * 11 - flutter * 6);
+        const elbowA = pt(10, -8);
+        const elbowB = pt(14, 13);
+
+        ctx.save();
+        ctx.strokeStyle = INK;
+        ctx.fillStyle = PAPER;
+        ctx.lineWidth = 3.4;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Hands clasp the physical rope point. The body is built from the rope
+        // vector, so a full rotation naturally rotates the stick figure with it.
+        ctx.beginPath();
+        curve(chest, elbowA, hand);
+        curve(chest, elbowB, hand);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(sx(hand.x), sy(hand.y), 4, 0, Math.PI * 2);
+        ctx.fillStyle = INK;
+        ctx.fill();
+
+        ctx.fillStyle = PAPER;
+        ctx.beginPath();
+        ctx.arc(sx(head.x), sy(head.y), 14, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Torso and loose trailing legs.
+        ctx.beginPath();
+        line(chest, hip);
+        curve(hip, kneeA, footA);
+        curve(hip, kneeB, footB);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawCrashCard() {
+        ctx.save();
+        ctx.translate(W / 2, H / 2);
+        ctx.fillStyle = 'rgba(255, 253, 247, 0.94)';
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 3;
+        ctx.fillRect(-190, -72, 380, 144);
+        ctx.strokeRect(-190, -72, 380, 144);
+        ctx.fillStyle = INK;
+        ctx.textAlign = 'center';
+        ctx.font = '900 30px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
+        ctx.fillText('CRASH', 0, -20);
+        ctx.font = '14px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
+        ctx.fillText('press space / click / tap to restart', 0, 18);
+        ctx.fillText('timing hint: release low, hook high', 0, 44);
+        ctx.restore();
+      }
+
+      function frame(ts) {
+        if (!last) last = ts;
+        const dt = Math.min(0.033, (ts - last) / 1000);
+        last = ts;
+        update(dt);
+        draw();
+        requestAnimationFrame(frame);
+      }
+
+      resize();
+      reset();
+      bestEl.textContent = best;
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
