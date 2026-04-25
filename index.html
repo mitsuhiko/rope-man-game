@@ -147,6 +147,8 @@
         attached: true,
         anchor: null,
         ropeLength: 190,
+        angle: 0,
+        angularVelocity: 0,
         alive: true,
         runPhase: 0,
       };
@@ -211,6 +213,9 @@
         generateUntil(W * 2.6);
         player.anchor = anchors[0];
         player.ropeLength = hypot(player.x - player.anchor.x, player.y - player.anchor.y);
+        player.angle = Math.atan2(player.x - player.anchor.x, player.y - player.anchor.y);
+        player.angularVelocity = 0;
+        syncAttachedKinematics();
         cameraX = player.x - W * 0.42;
         cameraY = player.y - H * 0.52;
       }
@@ -419,19 +424,6 @@
 
         if (!gameOver) {
           const control = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
-          if (control) {
-            player.vx += control * (player.attached ? SWING_ACCEL : AIR_ACCEL) * dt;
-          }
-
-          const speed = hypot(player.vx, player.vy);
-          const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
-          const drag = Math.exp(-nonlinearDrag * dt);
-          player.vx *= drag;
-          player.vy *= drag;
-
-          player.vy += GRAVITY * dt;
-          player.x += player.vx * dt;
-          player.y += player.vy * dt;
 
           if (ropeShot) {
             ropeShot.t += dt;
@@ -441,34 +433,21 @@
           }
 
           if (player.attached && player.anchor) {
-            const dx = player.x - player.anchor.x;
-            const dy = player.y - player.anchor.y;
-            const d = Math.max(0.0001, hypot(dx, dy));
-            const nx = dx / d;
-            const ny = dy / d;
-
-            const reel = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
-            if (reel) {
-              const oldLength = player.ropeLength;
-              player.ropeLength = clamp(player.ropeLength + reel * ROPE_REEL_SPEED * dt, MIN_ROPE, MAX_ROPE);
-              if (player.ropeLength !== oldLength) {
-                // Worms-style rope pumping: shortening the rope conserves angular
-                // momentum and adds speed; lengthening bleeds speed back out.
-                const tx = -ny;
-                const ty = nx;
-                const tangentSpeed = player.vx * tx + player.vy * ty;
-                const radialSpeed = player.vx * nx + player.vy * ny;
-                const energyScale = clamp(oldLength / player.ropeLength, 0.985, 1.018);
-                player.vx = tx * tangentSpeed * energyScale + nx * radialSpeed;
-                player.vy = ty * tangentSpeed * energyScale + ny * radialSpeed;
-              }
+            updateAttachedPhysics(dt, control);
+          } else {
+            if (control) {
+              player.vx += control * AIR_ACCEL * dt;
             }
 
-            player.x = player.anchor.x + nx * player.ropeLength;
-            player.y = player.anchor.y + ny * player.ropeLength;
-            const radial = player.vx * nx + player.vy * ny;
-            player.vx -= radial * nx;
-            player.vy -= radial * ny;
+            const speed = hypot(player.vx, player.vy);
+            const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
+            const drag = Math.exp(-nonlinearDrag * dt);
+            player.vx *= drag;
+            player.vy *= drag;
+
+            player.vy += GRAVITY * dt;
+            player.x += player.vx * dt;
+            player.y += player.vy * dt;
           }
 
           player.runPhase += dt * clamp(hypot(player.vx, player.vy) / 80, 3, 18);
@@ -509,21 +488,85 @@
         stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : 'flying');
       }
 
+      function updateAttachedPhysics(dt, control) {
+        // Hybrid arcade/physics solver: this is the older projection-based rope
+        // feel, with real gravity and a taut rope constraint. It is less
+        // mathematically pure than polar coordinates, but it gives the expected
+        // Worms-like flight path when releasing.
+        if (control) {
+          player.vx += control * SWING_ACCEL * dt;
+        }
+
+        const speed = hypot(player.vx, player.vy);
+        const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
+        const drag = Math.exp(-nonlinearDrag * dt);
+        player.vx *= drag;
+        player.vy *= drag;
+
+        player.vy += GRAVITY * dt;
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
+
+        const dx = player.x - player.anchor.x;
+        const dy = player.y - player.anchor.y;
+        const d = Math.max(0.0001, hypot(dx, dy));
+        const nx = dx / d;
+        const ny = dy / d;
+
+        const reel = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+        if (reel) {
+          const oldLength = player.ropeLength;
+          player.ropeLength = clamp(player.ropeLength + reel * ROPE_REEL_SPEED * dt, MIN_ROPE, MAX_ROPE);
+          if (player.ropeLength !== oldLength) {
+            const tx = -ny;
+            const ty = nx;
+            const tangentSpeed = player.vx * tx + player.vy * ty;
+            const radialSpeed = player.vx * nx + player.vy * ny;
+            const energyScale = clamp(oldLength / player.ropeLength, 0.985, 1.018);
+            player.vx = tx * tangentSpeed * energyScale + nx * radialSpeed;
+            player.vy = ty * tangentSpeed * energyScale + ny * radialSpeed;
+          }
+        }
+
+        player.x = player.anchor.x + nx * player.ropeLength;
+        player.y = player.anchor.y + ny * player.ropeLength;
+        const radial = player.vx * nx + player.vy * ny;
+        player.vx -= radial * nx;
+        player.vy -= radial * ny;
+
+        player.angle = Math.atan2(player.x - player.anchor.x, player.y - player.anchor.y);
+        player.angularVelocity = ((player.vx * ny) - (player.vy * nx)) / Math.max(1, player.ropeLength);
+      }
+
+      function syncAttachedKinematics() {
+        if (!player.anchor) return;
+        const sin = Math.sin(player.angle);
+        const cos = Math.cos(player.angle);
+        player.x = player.anchor.x + sin * player.ropeLength;
+        player.y = player.anchor.y + cos * player.ropeLength;
+        player.vx = cos * player.angularVelocity * player.ropeLength;
+        player.vy = -sin * player.angularVelocity * player.ropeLength;
+      }
+
       function attachToAnchor(anchor) {
         const d = Math.max(0.0001, hypot(anchor.x - player.x, anchor.y - player.y));
         player.attached = true;
         player.anchor = anchor;
         lockedAnchor = null;
         player.ropeLength = clamp(d, MIN_ROPE, MAX_ROPE);
-        // Keep momentum, but soften only the outward component that would make
-        // the new long rope snap taut too violently on the first frame.
-        const nx = (player.x - player.anchor.x) / d;
-        const ny = (player.y - player.anchor.y) / d;
+        player.angle = Math.atan2(player.x - anchor.x, player.y - anchor.y);
+
+        // Catching a rope mostly keeps linear momentum, but a taut rope cannot
+        // keep outward radial velocity forever. Softly remove that component so
+        // the catch feels like the old version instead of a harsh snap.
+        const nx = (player.x - anchor.x) / d;
+        const ny = (player.y - anchor.y) / d;
         const radial = player.vx * nx + player.vy * ny;
         if (radial > 0) {
           player.vx -= radial * nx * 0.35;
           player.vy -= radial * ny * 0.35;
         }
+        player.angularVelocity = ((player.vx * ny) - (player.vy * nx)) / Math.max(1, player.ropeLength);
       }
 
       function die() {
