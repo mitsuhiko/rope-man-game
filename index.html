@@ -1201,7 +1201,7 @@
 
         // Cross-braces keep the gripping side readable. The off arm is left
         // unpinned so it can trail like a real loose ragdoll limb.
-        solveRagdollDistance(j.handL, j.shoulder, 33, 0.55);
+        solveRagdollDistance(j.handL, j.shoulder, 37, 0.65);
         solveRagdollDistance(j.handL, j.hip, 75, 0.18);
 
         solveRagdollDistance(j.shoulder, j.hip, 43, 1);
@@ -1303,20 +1303,12 @@
           ctx.moveTo(sx(a.x), sy(a.y));
           ctx.lineTo(sx(b.x), sy(b.y));
         };
-        const curve = (a, c, b) => {
-          ctx.moveTo(sx(a.x), sy(a.y));
-          ctx.quadraticCurveTo(sx(c.x), sy(c.y), sx(b.x), sy(b.y));
-        };
 
-        // Render a side-profile stickman, not the literal two-armed ragdoll.
-        // The ragdoll still supplies inertia, but the final silhouette is
-        // art-directed like the reference: one visible arm, attached head,
-        // torso, and two readable bent legs.
+        // Render a side-profile stickman. The ragdoll supplies inertia, but the
+        // silhouette is art-directed: both arms are upper/lower line segments,
+        // the gripping arm is kept nearly straight, and legs stay readable.
         const core = stickmanCorePose(false);
         const { body, side, shoulder, hip, head, neckEnd } = core;
-
-        const armCtlPose = add(add(mix(shoulder, grip, 0.55), mul(side, -15)), mul(body, 7));
-        const armCtl = mix(j.elbowL, armCtlPose, 0.72);
 
         const trail = norm({ x: -player.vx * 0.045, y: -player.vy * 0.045 + 16 }, body);
         const speedT = clamp(speed / 1200, 0, 1);
@@ -1331,6 +1323,10 @@
         const footA = mix(j.footL, footPoseA, 0.62);
         const kneeB = mix(j.kneeR, kneePoseB, 0.62);
         const footB = mix(j.footR, footPoseB, 0.62);
+        // The gripping arm should read as locked/straight under tension. Keep
+        // the two-segment construction, but put the elbow exactly on the line
+        // from shoulder to grip so there is no impossible bend.
+        const gripElbow = mix(shoulder, grip, 0.52);
 
         ctx.save();
         ctx.strokeStyle = INK;
@@ -1342,7 +1338,8 @@
         ctx.beginPath();
         line(shoulder, j.elbowR);
         line(j.elbowR, j.handR);
-        curve(shoulder, armCtl, grip);
+        line(shoulder, gripElbow);
+        line(gripElbow, grip);
         line(shoulder, neckEnd);
         line(shoulder, hip);
         line(hip, kneeA);
@@ -1360,6 +1357,7 @@
         ctx.fillStyle = INK;
         ctx.beginPath();
         ctx.arc(sx(grip.x), sy(grip.y), 4, 0, Math.PI * 2);
+        ctx.arc(sx(j.handR.x), sy(j.handR.y), 3, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
