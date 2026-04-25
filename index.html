@@ -26,66 +26,86 @@
       font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
     }
 
-    canvas {
-      display: block;
+    body {
+      box-sizing: border-box;
+    }
+
+    .game-shell {
+      position: relative;
       width: 100vw;
       height: 100vh;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
       background: var(--paper);
       cursor: crosshair;
     }
 
     .hud {
-      position: fixed;
-      inset: 18px 18px auto 18px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 16px;
+      position: absolute;
+      inset: 0 0 auto auto;
+      box-sizing: border-box;
+      width: clamp(190px, 24%, 320px);
+      min-height: clamp(104px, 18%, 150px);
+      padding: clamp(12px, 1.5vw, 20px) clamp(14px, 1.9vw, 26px);
+      border: clamp(5px, 0.5vw, 8px) solid var(--ink);
+      background: var(--paper);
       pointer-events: none;
       user-select: none;
-      mix-blend-mode: multiply;
+      z-index: 2;
     }
 
-    .panel {
-      border: 2px solid var(--ink);
-      background: transparent;
-      padding: 10px 12px;
-      box-shadow: none;
+    .score-label {
+      font-size: clamp(28px, 3.3vw, 54px);
+      line-height: 0.9;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      text-transform: uppercase;
     }
 
-    .score {
-      font-size: 18px;
+    .score-value {
+      margin-top: 7px;
+      font-size: clamp(18px, 2vw, 30px);
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+    }
+
+    .score-meta {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: clamp(11px, 1vw, 14px);
       line-height: 1.25;
       font-weight: 900;
       letter-spacing: 0.02em;
     }
 
-    .help {
-      max-width: min(460px, 55vw);
-      font-size: 12px;
-      line-height: 1.45;
-      text-align: right;
-    }
-
-    .help b { text-transform: uppercase; }
-
     @media (max-width: 700px) {
-      .hud { inset: 10px; }
-      .help { display: none; }
-      .score { font-size: 15px; }
-      .panel { padding: 8px 9px; }
+      .hud {
+        width: 150px;
+        min-height: 78px;
+        padding: 8px 10px;
+      }
+      .score-label { font-size: 24px; }
+      .score-value { font-size: 16px; }
+      .score-meta { font-size: 9px; }
     }
   </style>
 </head>
 <body>
-  <canvas id="game" aria-label="Rope Dash canvas game"></canvas>
-  <div class="hud">
-    <div class="panel score">
-      <div>distance <span id="score">0</span>m</div>
-      <div>best <span id="best">0</span>m</div>
-      <div id="state">attached</div>
-    </div>
-  </div>
+  <main class="game-shell" aria-label="Rope Dash Spike">
+    <canvas id="game" aria-label="Rope Dash canvas game"></canvas>
+    <section class="hud" aria-label="Score">
+      <div class="score-label">score</div>
+      <div class="score-value"><span id="score">0</span>m</div>
+      <div class="score-meta">best <span id="best">0</span>m · <span id="state">attached</span></div>
+    </section>
+  </main>
 
   <script>
     (() => {
@@ -137,8 +157,16 @@
       const MIN_ROPE = 55;
       const MAX_ROPE = 780;
       const GATE_EXTENT = 2400;
-      const LIQUID_BANK_INSET = 18;
-      const LIQUID_SURFACE_STEP = 18;
+      const TERRAIN_STEP = 18;
+      const TERRAIN_KNOT_MIN = 280;
+      const TERRAIN_KNOT_MAX = 540;
+      const TERRAIN_BUFFER = 1600;
+      const TERRAIN_DROP = 100;
+      const TERRAIN_MIN_Y = H * 0.55 + TERRAIN_DROP;
+      const TERRAIN_MAX_Y = H - 48 + TERRAIN_DROP;
+      const TERRAIN_POOL_MIN_W = 420;
+      const TERRAIN_POOL_MAX_W = 980;
+      const TERRAIN_POOL_STEP = 18;
 
       const player = {
         x: 150,
@@ -163,6 +191,11 @@
       let anchors = [];
       let obstacles = [];
       let bgShapes = [];
+      let terrainKnots = [];
+      let terrainPools = [];
+      let terrainCursorX = 0;
+      let terrainLastY = 0;
+      let nextTerrainPoolX = 0;
       let nextAnchorX = 120;
       let nextObstacleX = 950;
       let spawnIndex = 0;
@@ -173,8 +206,9 @@
 
       function resize() {
         DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-        screenW = Math.floor(window.innerWidth);
-        screenH = Math.floor(window.innerHeight);
+        const rect = canvas.getBoundingClientRect();
+        screenW = Math.max(1, Math.floor(rect.width));
+        screenH = Math.max(1, Math.floor(rect.height));
         canvas.width = Math.floor(screenW * DPR);
         canvas.height = Math.floor(screenH * DPR);
 
@@ -185,6 +219,9 @@
         viewportY = (screenH - H * viewportScale) / 2;
       }
       window.addEventListener('resize', resize);
+      if ('ResizeObserver' in window) {
+        new ResizeObserver(resize).observe(canvas);
+      }
 
       const rand = (a, b) => a + Math.random() * (b - a);
       const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -201,6 +238,7 @@
         anchors = [];
         obstacles = [];
         bgShapes = [];
+        resetTerrain();
         nextAnchorX = 120;
         nextObstacleX = 950;
         spawnIndex = 0;
@@ -253,11 +291,14 @@
       }
 
       function generateUntil(worldX) {
+        generateTerrainUntil(worldX);
+
         while (nextAnchorX < worldX) {
           const difficulty = clamp(nextAnchorX / 5000, 0, 1);
           const gap = rand(260, 420 + difficulty * 90);
           const wave = Math.sin(nextAnchorX / 680) * 95;
-          const y = clamp(rand(95 + wave, 315 + wave + difficulty * 80), -160, H * 0.58);
+          const maxAnchorY = Math.min(H * 0.58, terrainYAt(nextAnchorX) - 135);
+          const y = clamp(rand(95 + wave, 315 + wave + difficulty * 80), -160, maxAnchorY);
           addAnchor(nextAnchorX, y);
           nextAnchorX += gap;
         }
@@ -271,14 +312,14 @@
       function spawnObstacleCluster(x, i) {
         const difficulty = clamp(x / 5500, 0, 1);
         const roll = Math.random();
-        const floorY = H - 84;
+        const groundY = terrainYAt(x);
 
         if (i < 1) {
           obstacles.push({ type: 'gate', x, w: 26, gapY: H * 0.54, gap: 360, phase: rand(0, Math.PI * 2), speed: 0.65 });
           return;
         }
 
-        if (roll < 0.20) {
+        if (roll < 0.23) {
           obstacles.push({
             type: 'gate',
             x,
@@ -288,40 +329,29 @@
             phase: rand(0, Math.PI * 2),
             speed: rand(0.55, 1.15 + difficulty * 0.25),
           });
-        } else if (roll < 0.48) {
+        } else if (roll < 0.56) {
           obstacles.push({
             type: 'saw',
             x,
-            y: rand(H * 0.30, H * 0.66),
+            y: rand(H * 0.30, clamp(groundY - 105, H * 0.42, H * 0.68)),
             r: rand(24, 38),
             spin: rand(-1, 1) < 0 ? -1 : 1,
             bob: rand(95, 180),
             phase: rand(0, Math.PI * 2),
           });
-        } else if (roll < 0.79) {
-          const kind = Math.random() < 0.55 ? 'lava' : 'water';
-          obstacles.push({
-            type: kind,
-            x,
-            y: floorY - rand(18, 38),
-            w: rand(380, 680),
-            h: 760,
-            leftHill: rand(70, 135),
-            rightHill: rand(70, 135),
-            waveOffset: rand(0, Math.PI * 2),
-          });
-          if (Math.random() < 0.45) {
-            obstacles.push({ type: 'spikes', x: x + rand(60, 190), y: floorY - 22, count: Math.floor(rand(2, 5)), dir: -1, size: 24 });
-          }
         } else {
-          const ceiling = Math.random() < 0.35;
+          const ceiling = Math.random() < 0.30;
+          const size = rand(22, 31);
+          const count = Math.floor(rand(4, 9));
+          const spikeX = x + (ceiling ? 0 : rand(-50, 95));
+          const spikeMidX = spikeX + count * size * 0.5;
           obstacles.push({
             type: 'spikes',
-            x,
-            y: ceiling ? 34 : floorY - 8,
-            count: Math.floor(rand(4, 9)),
+            x: spikeX,
+            y: ceiling ? 34 : terrainYAt(spikeMidX) - 8,
+            count,
             dir: ceiling ? 1 : -1,
-            size: rand(22, 31),
+            size,
           });
         }
       }
@@ -482,6 +512,7 @@
 
         anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || a.x > cameraX - 1800);
         obstacles = obstacles.filter(o => (o.x + (o.w || o.r || 0)) > cameraX - 1800);
+        pruneTerrain();
         for (const s of bgShapes) {
           const sx = s.x - cameraX * s.layer;
           if (sx < -180) {
@@ -626,26 +657,202 @@
         ];
       }
 
-      function liquidSurfaceY(o, localX) {
-        return o.y + Math.sin(time * 3.2 + o.waveOffset + localX * 0.055) * 5;
+      function smoothstep01(t) {
+        t = clamp(t, 0, 1);
+        return t * t * (3 - 2 * t);
       }
 
-      function liquidHitbox(o) {
-        const inset = Math.min(LIQUID_BANK_INSET, o.w * 0.25);
-        const right = o.w - inset;
-        const bottom = o.y + o.h;
-        const points = [];
-        for (let xx = inset; xx < right; xx += LIQUID_SURFACE_STEP) {
-          points.push({ x: o.x + xx, y: liquidSurfaceY(o, xx) });
+      function resetTerrain() {
+        terrainKnots = [];
+        terrainPools = [];
+        terrainCursorX = -1150;
+        terrainLastY = H - 128 + TERRAIN_DROP;
+        nextTerrainPoolX = 1040;
+
+        addTerrainKnot(-1150, H - 128 + TERRAIN_DROP);
+        addTerrainKnot(-820, H - 210 + TERRAIN_DROP);
+        addTerrainKnot(-460, H - 145 + TERRAIN_DROP);
+        addTerrainKnot(-120, H - 118 + TERRAIN_DROP);
+        addTerrainKnot(250, H - 155 + TERRAIN_DROP);
+      }
+
+      function addTerrainKnot(x, y) {
+        const clampedY = clamp(y, TERRAIN_MIN_Y, TERRAIN_MAX_Y);
+        terrainKnots.push({ x, y: clampedY });
+        terrainCursorX = x;
+        terrainLastY = clampedY;
+      }
+
+      function generateTerrainUntil(worldX) {
+        while (terrainCursorX < worldX + TERRAIN_BUFFER + TERRAIN_POOL_MAX_W) {
+          const gap = rand(TERRAIN_KNOT_MIN, TERRAIN_KNOT_MAX);
+          const x = terrainCursorX + gap;
+          const mid = (TERRAIN_MIN_Y + TERRAIN_MAX_Y) / 2;
+          const lastWasHill = terrainLastY < mid;
+          const makeValley = lastWasHill ? Math.random() < 0.78 : Math.random() < 0.34;
+          let y = makeValley ? rand(mid + 42, TERRAIN_MAX_Y) : rand(TERRAIN_MIN_Y, mid - 24);
+
+          // A low-frequency wobble keeps the silhouette from becoming a simple
+          // alternating sine wave while still staying smooth and readable.
+          y += Math.sin(x / 1180) * 28 + Math.sin(x / 570 + 1.7) * 18;
+          if (Math.abs(y - terrainLastY) < 55) {
+            y += (y >= terrainLastY ? 1 : -1) * rand(55, 110);
+          }
+          addTerrainKnot(x, y);
         }
-        points.push({ x: o.x + right, y: liquidSurfaceY(o, right) });
-        points.push({ x: o.x + right, y: bottom });
-        points.push({ x: o.x + inset, y: bottom });
-        return { shape: 'polygon', kind: o.type, points };
+
+        generateTerrainPoolsUntil(worldX + TERRAIN_BUFFER * 0.35);
+      }
+
+      function generateTerrainPoolsUntil(worldX) {
+        while (nextTerrainPoolX < worldX) {
+          const x = nextTerrainPoolX + rand(0, 260);
+          const w = rand(TERRAIN_POOL_MIN_W, TERRAIN_POOL_MAX_W);
+          const stats = terrainRangeStats(x, x + w, 42);
+          const depth = stats.maxY - stats.minY;
+
+          if (depth > 48) {
+            const levelY = clamp(
+              stats.minY + depth * rand(0.48, 0.72),
+              stats.minY + 24,
+              stats.maxY - 22
+            );
+            terrainPools.push({
+              type: Math.random() < 0.62 ? 'water' : 'lava',
+              x,
+              w,
+              levelY,
+              waveAmp: rand(3.5, 6.5),
+              waveOffset: rand(0, Math.PI * 2),
+            });
+          }
+
+          nextTerrainPoolX = x + w + rand(620, 1280);
+        }
+      }
+
+      function terrainRangeStats(left, right, step = 48) {
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (let x = left; x <= right; x += step) {
+          const y = terrainYAt(x);
+          minY = Math.min(minY, y);
+          maxY = Math.max(maxY, y);
+        }
+        const endY = terrainYAt(right);
+        return { minY: Math.min(minY, endY), maxY: Math.max(maxY, endY) };
+      }
+
+      function terrainYAt(worldX) {
+        if (!terrainKnots.length) return H - 120;
+        if (worldX <= terrainKnots[0].x) return terrainKnots[0].y;
+
+        for (let i = 0; i < terrainKnots.length - 1; i++) {
+          const a = terrainKnots[i];
+          const b = terrainKnots[i + 1];
+          if (worldX <= b.x) {
+            const p0 = terrainKnots[Math.max(0, i - 1)];
+            const p3 = terrainKnots[Math.min(terrainKnots.length - 1, i + 2)];
+            const t = smoothstep01((worldX - a.x) / Math.max(1, b.x - a.x));
+            const t2 = t * t;
+            const t3 = t2 * t;
+            const y = 0.5 * (
+              2 * a.y +
+              (-p0.y + b.y) * t +
+              (2 * p0.y - 5 * a.y + 4 * b.y - p3.y) * t2 +
+              (-p0.y + 3 * a.y - 3 * b.y + p3.y) * t3
+            );
+            return clamp(y, TERRAIN_MIN_Y - 20, TERRAIN_MAX_Y + 20);
+          }
+        }
+
+        return terrainKnots[terrainKnots.length - 1].y;
+      }
+
+      function terrainPoints(left, right, step = TERRAIN_STEP) {
+        const points = [];
+        points.push({ x: left, y: terrainYAt(left) });
+        for (let x = Math.ceil(left / step) * step; x < right; x += step) {
+          if (x > left) points.push({ x, y: terrainYAt(x) });
+        }
+        if (right > left) points.push({ x: right, y: terrainYAt(right) });
+        return points;
+      }
+
+      function terrainLiquidSurfaceY(pool, worldX) {
+        const localX = worldX - pool.x;
+        return pool.levelY +
+          Math.sin(time * 3.2 + pool.waveOffset + localX * 0.055) * pool.waveAmp +
+          Math.sin(time * 1.15 + pool.waveOffset * 1.7 + localX * 0.018) * 1.8;
+      }
+
+      function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
+        const start = Math.max(pool.x, left);
+        const end = Math.min(pool.x + pool.w, right);
+        if (end - start < 2) return [];
+
+        const terrain = terrainPoints(start, end, TERRAIN_POOL_STEP);
+        const polys = [];
+        let surface = [];
+        let ground = [];
+        const finish = () => {
+          if (surface.length >= 2) {
+            polys.push({
+              surface,
+              ground,
+              points: surface.concat([...ground].reverse()),
+            });
+          }
+          surface = [];
+          ground = [];
+        };
+
+        for (const p of terrain) {
+          const levelY = terrainLiquidSurfaceY(pool, p.x);
+          if (p.y > levelY + 1) {
+            surface.push({ x: p.x, y: levelY });
+            ground.push({ x: p.x, y: p.y });
+          } else {
+            finish();
+          }
+        }
+        finish();
+        return polys;
+      }
+
+      function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + W + 320) {
+        const hitboxes = [];
+        for (const pool of terrainPools) {
+          if (pool.x > right || pool.x + pool.w < left) continue;
+          for (const poly of terrainPoolPolygons(pool, left, right)) {
+            hitboxes.push({ shape: 'polygon', kind: pool.type, points: poly.points });
+          }
+        }
+        return hitboxes;
+      }
+
+      function terrainSolidHitbox(left = cameraX - 320, right = cameraX + W + 320) {
+        const surface = terrainPoints(left, right, TERRAIN_STEP);
+        const bottom = Math.max(LOST_BELOW_Y + 1000, cameraY + H + 1600);
+        return {
+          shape: 'polygon',
+          kind: 'terrain',
+          points: surface.concat([{ x: right, y: bottom }, { x: left, y: bottom }]),
+        };
+      }
+
+      function pruneTerrain() {
+        const cutoff = cameraX - TERRAIN_BUFFER * 2;
+        while (terrainKnots.length > 8 && terrainKnots[3].x < cutoff) {
+          terrainKnots.shift();
+        }
+        terrainPools = terrainPools.filter(pool => pool.x + pool.w > cutoff);
       }
 
       function obstacleHitboxes() {
-        const hitboxes = [];
+        const hitboxes = [terrainSolidHitbox()];
+        hitboxes.push(...terrainLiquidHitboxes());
+
         for (const o of obstacles) {
           if (o.type === 'saw') {
             hitboxes.push({
@@ -655,8 +862,6 @@
               y: o.y + Math.sin(time * 1.8 + o.phase) * o.bob,
               r: o.r * 0.86,
             });
-          } else if (o.type === 'lava' || o.type === 'water') {
-            hitboxes.push(liquidHitbox(o));
           } else if (o.type === 'gate') {
             const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
             const gap = o.gap * (0.75 + open * 0.40);
@@ -753,7 +958,7 @@
         ctx.fillRect(0, 0, W, H);
 
         drawBackground();
-        drawHorizon();
+        drawTerrain();
         drawObstacles();
         drawAnchors();
         drawRopeAndPlayer();
@@ -848,16 +1053,68 @@
         ctx.restore();
       }
 
-      function drawHorizon() {
-        const floorY = H - 84;
+      function drawTerrain() {
+        const left = cameraX - 260;
+        const right = cameraX + W + 260;
+        const surface = terrainPoints(left, right, TERRAIN_STEP);
+
         ctx.save();
-        ctx.strokeStyle = '#cfcfcf';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([12, 18]);
+
+        for (const pool of terrainPools) {
+          if (pool.x > right || pool.x + pool.w < left) continue;
+          drawTerrainPool(pool, left, right);
+        }
+
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.moveTo(0, sy(floorY));
-        ctx.lineTo(W, sy(floorY));
+        for (let i = 0; i < surface.length; i++) {
+          const p = surface[i];
+          if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+          else ctx.lineTo(sx(p.x), sy(p.y));
+        }
         ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawTerrainPool(pool, left, right) {
+        const isLava = pool.type === 'lava';
+        const fill = isLava ? LAVA : WATER;
+        const line = isLava ? LAVA_LINE : WATER_LINE;
+        const bodies = terrainPoolPolygons(pool, left, right);
+
+        ctx.save();
+        for (const body of bodies) {
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = line;
+          ctx.lineWidth = 2.5;
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = 0.78;
+          ctx.beginPath();
+          for (let i = 0; i < body.points.length; i++) {
+            const p = body.points[i];
+            if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+            else ctx.lineTo(sx(p.x), sy(p.y));
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+
+          ctx.strokeStyle = line;
+          ctx.lineWidth = 5;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          for (let i = 0; i < body.surface.length; i++) {
+            const p = body.surface[i];
+            if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+            else ctx.lineTo(sx(p.x), sy(p.y));
+          }
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
@@ -921,7 +1178,6 @@
           if (o.type === 'gate') drawGate(o);
           else if (o.type === 'saw') drawSaw(o);
           else if (o.type === 'spikes') drawSpikes(o);
-          else drawLiquid(o);
         }
       }
 
@@ -1006,80 +1262,6 @@
           ctx.fill();
           ctx.stroke();
         }
-        ctx.restore();
-      }
-
-      function drawLiquid(o) {
-        const isLava = o.type === 'lava';
-        const fill = isLava ? LAVA : WATER;
-        const line = isLava ? LAVA_LINE : WATER_LINE;
-        const bottom = o.y + o.h;
-        const leftBank = o.x - 190;
-        const rightBank = o.x + o.w + 190;
-        const leftHill = o.leftHill || 100;
-        const rightHill = o.rightHill || 100;
-
-        ctx.save();
-
-        // Deep puddle body. It extends far below the visible play field so it
-        // reads as a pool/ocean pocket rather than a floating rectangle.
-        ctx.fillStyle = fill;
-        ctx.strokeStyle = line;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(sx(o.x), sy(o.y));
-        for (let xx = 0; xx <= o.w; xx += 18) {
-          const yy = liquidSurfaceY(o, xx);
-          ctx.lineTo(sx(o.x + xx), sy(yy));
-        }
-        ctx.lineTo(sx(o.x + o.w), sy(bottom));
-        ctx.lineTo(sx(o.x), sy(bottom));
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Paper-colored land banks drawn over the liquid edges. The Bezier
-        // curves make the pool look carved into hilly ground.
-        ctx.fillStyle = PAPER;
-        ctx.strokeStyle = INK;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(sx(leftBank), sy(bottom));
-        ctx.lineTo(sx(leftBank), sy(o.y + 85));
-        ctx.bezierCurveTo(
-          sx(o.x - 155), sy(o.y - leftHill),
-          sx(o.x - 65), sy(o.y - leftHill * 0.75),
-          sx(o.x + 12), sy(o.y + 7)
-        );
-        ctx.lineTo(sx(o.x + 12), sy(bottom));
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(sx(o.x + o.w - 12), sy(bottom));
-        ctx.lineTo(sx(o.x + o.w - 12), sy(o.y + 7));
-        ctx.bezierCurveTo(
-          sx(o.x + o.w + 65), sy(o.y - rightHill * 0.75),
-          sx(o.x + o.w + 155), sy(o.y - rightHill),
-          sx(rightBank), sy(o.y + 85)
-        );
-        ctx.lineTo(sx(rightBank), sy(bottom));
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Re-draw a lively surface line on top of the banks.
-        ctx.strokeStyle = line;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (let xx = 14; xx <= o.w - 14; xx += 18) {
-          const yy = liquidSurfaceY(o, xx);
-          if (xx === 14) ctx.moveTo(sx(o.x + xx), sy(yy));
-          else ctx.lineTo(sx(o.x + xx), sy(yy));
-        }
-        ctx.stroke();
-
         ctx.restore();
       }
 
@@ -1194,14 +1376,14 @@
 
       function solveRagdollConstraints() {
         const j = ragdoll.joints;
-        solveRagdollDistance(j.handL, j.elbowL, 18, 1);
-        solveRagdollDistance(j.elbowL, j.shoulder, 20, 1);
-        solveRagdollDistance(j.handR, j.elbowR, 18, 0.95);
-        solveRagdollDistance(j.elbowR, j.shoulder, 20, 0.95);
+        solveRagdollDistance(j.handL, j.elbowL, 19, 1);
+        solveRagdollDistance(j.elbowL, j.shoulder, 19, 1);
+        solveRagdollDistance(j.handR, j.elbowR, 19, 0.95);
+        solveRagdollDistance(j.elbowR, j.shoulder, 19, 0.95);
 
         // Cross-braces keep the gripping side readable. The off arm is left
         // unpinned so it can trail like a real loose ragdoll limb.
-        solveRagdollDistance(j.handL, j.shoulder, 37, 0.65);
+        solveRagdollDistance(j.handL, j.shoulder, 38, 0.65);
         solveRagdollDistance(j.handL, j.hip, 75, 0.18);
 
         solveRagdollDistance(j.shoulder, j.hip, 43, 1);
@@ -1323,10 +1505,18 @@
         const footA = mix(j.footL, footPoseA, 0.62);
         const kneeB = mix(j.kneeR, kneePoseB, 0.62);
         const footB = mix(j.footR, footPoseB, 0.62);
-        // The gripping arm should read as locked/straight under tension. Keep
-        // the two-segment construction, but put the elbow exactly on the line
-        // from shoulder to grip so there is no impossible bend.
-        const gripElbow = mix(shoulder, grip, 0.52);
+        // Draw both arms with the same apparent length. The gripping arm is
+        // locked straight under rope tension, with its elbow exactly halfway
+        // between shoulder and hand. The free arm uses the same shoulder-hand
+        // reach and the same half-way elbow so neither arm reads longer.
+        const armReach = Math.max(2, hypot(grip.x - shoulder.x, grip.y - shoulder.y));
+        const freeArmDir = norm(
+          { x: j.handR.x - shoulder.x, y: j.handR.y - shoulder.y },
+          norm({ x: body.x * 0.65 - side.x * 0.8, y: body.y * 0.65 - side.y * 0.8 }, body)
+        );
+        const gripElbow = mix(shoulder, grip, 0.5);
+        const freeHand = add(shoulder, mul(freeArmDir, armReach));
+        const freeElbow = mix(shoulder, freeHand, 0.5);
 
         ctx.save();
         ctx.strokeStyle = INK;
@@ -1336,8 +1526,8 @@
         ctx.lineJoin = 'round';
 
         ctx.beginPath();
-        line(shoulder, j.elbowR);
-        line(j.elbowR, j.handR);
+        line(shoulder, freeElbow);
+        line(freeElbow, freeHand);
         line(shoulder, gripElbow);
         line(gripElbow, grip);
         line(shoulder, neckEnd);
@@ -1357,7 +1547,7 @@
         ctx.fillStyle = INK;
         ctx.beginPath();
         ctx.arc(sx(grip.x), sy(grip.y), 4, 0, Math.PI * 2);
-        ctx.arc(sx(j.handR.x), sy(j.handR.y), 3, 0, Math.PI * 2);
+        ctx.arc(sx(freeHand.x), sy(freeHand.y), 3, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
