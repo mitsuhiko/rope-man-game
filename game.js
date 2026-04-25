@@ -60,6 +60,7 @@
   const AIR_ACCEL = 620;
   const ROPE_REEL_SPEED = 230;
   const PLAYER_RADIUS = 15;
+  const HOOK_ARM_REACH = 38;
   const MIN_ROPE = 55;
   const MAX_ROPE = 780;
   const GATE_EXTENT = 2400;
@@ -95,6 +96,14 @@
     initialized: false,
     joints: {},
     visualSide: 1,
+  };
+
+  const hookArm = {
+    initialized: false,
+    x: 0,
+    y: 0,
+    ox: 0,
+    oy: 0,
   };
 
   let anchors = [];
@@ -140,6 +149,60 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const hypot = Math.hypot;
+
+  function hookAimAnchor() {
+    if (gameOver || player.attached) return null;
+    if (ropeShot && ropeShot.anchor) return ropeShot.anchor;
+    return focusedAnchor;
+  }
+
+  function desiredHookHandPosition() {
+    const fallback = { x: player.x, y: player.y };
+    const target = hookAimAnchor();
+    if (!target || !ragdoll.initialized || !ragdoll.joints.shoulder) return fallback;
+
+    const shoulder = ragdoll.joints.shoulder;
+    const dx = target.x - shoulder.x;
+    const dy = target.y - shoulder.y;
+    const d = hypot(dx, dy);
+    if (d <= 0.0001) return fallback;
+
+    return {
+      x: shoulder.x + dx / d * HOOK_ARM_REACH,
+      y: shoulder.y + dy / d * HOOK_ARM_REACH,
+    };
+  }
+
+  function hookHandPosition() {
+    if (!hookArm.initialized || player.attached || gameOver) return { x: player.x, y: player.y };
+    return { x: hookArm.x, y: hookArm.y };
+  }
+
+  function updateHookArmAim(dt) {
+    const desired = desiredHookHandPosition();
+    if (!hookArm.initialized || player.attached || gameOver || !ragdoll.initialized || !ragdoll.joints.shoulder) {
+      hookArm.initialized = true;
+      hookArm.x = player.x;
+      hookArm.y = player.y;
+      if (ragdoll.initialized && ragdoll.joints.shoulder) {
+        hookArm.ox = player.x - ragdoll.joints.shoulder.x;
+        hookArm.oy = player.y - ragdoll.joints.shoulder.y;
+      } else {
+        hookArm.ox = 0;
+        hookArm.oy = 0;
+      }
+      return;
+    }
+
+    const shoulder = ragdoll.joints.shoulder;
+    const desiredOx = desired.x - shoulder.x;
+    const desiredOy = desired.y - shoulder.y;
+    const t = smoothstep01(clamp(dt * 11, 0, 1));
+    hookArm.ox += (desiredOx - hookArm.ox) * t;
+    hookArm.oy += (desiredOy - hookArm.oy) * t;
+    hookArm.x = shoulder.x + hookArm.ox;
+    hookArm.y = shoulder.y + hookArm.oy;
+  }
 
   function inputAxisX() {
     const keyboard = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
@@ -267,6 +330,9 @@
     ragdoll.initialized = false;
     ragdoll.joints = {};
     ragdoll.visualSide = 1;
+    hookArm.initialized = false;
+    hookArm.ox = 0;
+    hookArm.oy = 0;
 
     player.x = 150;
     player.y = Math.min(270, H * 0.45);
@@ -275,6 +341,8 @@
     player.attached = true;
     player.alive = true;
     player.runPhase = 0;
+    hookArm.x = player.x;
+    hookArm.y = player.y;
 
     seedBackground();
     generateUntil(W * 2.6);
@@ -455,8 +523,6 @@
           anchor: target,
           t: 0,
           duration: clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION),
-          fromX: player.x,
-          fromY: player.y,
         };
       }
     }
@@ -557,6 +623,7 @@
       cameraY += cameraVY * dt;
 
       updateRagdoll(dt);
+      updateHookArmAim(dt);
 
       if (isUnrecoverablyLost() || hitsObstacle()) {
         die();
@@ -1284,6 +1351,7 @@
     }
 
     if (!player.attached && focusedAnchor && !ropeShot) {
+      const hookHand = hookHandPosition();
       const d = hypot(focusedAnchor.x - player.x, focusedAnchor.y - player.y);
       ctx.save();
       ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
@@ -1292,7 +1360,7 @@
       ctx.lineWidth = isLockedTarget ? 3 : 2;
       ctx.setLineDash(d <= HOOK_RANGE ? [9, 7] : [4, 10]);
       ctx.beginPath();
-      ctx.moveTo(sx(player.x), sy(player.y));
+      ctx.moveTo(sx(hookHand.x), sy(hookHand.y));
       ctx.lineTo(sx(focusedAnchor.x), sy(focusedAnchor.y));
       ctx.stroke();
       ctx.setLineDash([]);
@@ -1427,11 +1495,12 @@
       ctx.restore();
     } else if (ropeShot && ropeShot.anchor) {
       const p = clamp(ropeShot.t / ropeShot.duration, 0, 1);
-      const tipX = ropeShot.fromX + (ropeShot.anchor.x - ropeShot.fromX) * p;
-      const tipY = ropeShot.fromY + (ropeShot.anchor.y - ropeShot.fromY) * p;
+      const hookHand = hookHandPosition();
+      const tipX = hookHand.x + (ropeShot.anchor.x - hookHand.x) * p;
+      const tipY = hookHand.y + (ropeShot.anchor.y - hookHand.y) * p;
       ctx.save();
-      const dx = tipX - player.x;
-      const dy = tipY - player.y;
+      const dx = ropeShot.anchor.x - hookHand.x;
+      const dy = ropeShot.anchor.y - hookHand.y;
       const len = Math.max(1, hypot(dx, dy));
       const ux = dx / len;
       const uy = dy / len;
@@ -1450,7 +1519,7 @@
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(sx(player.x), sy(player.y));
+      ctx.moveTo(sx(hookHand.x), sy(hookHand.y));
       ctx.lineTo(sx(notchX), sy(notchY));
       ctx.stroke();
 
@@ -1528,8 +1597,8 @@
 
   function pinRagdollHands(dt) {
     const j = ragdoll.joints;
-    // Only the front hand is actually gripping the rope. The other hand is
-    // a free ragdoll limb connected at the shoulder.
+    // Keep the body tethered to the physics point. When free-flying, the
+    // rendered hook hand can aim independently toward the focused anchor.
     pinJoint(j.handL, player.x, player.y, dt);
   }
 
@@ -1618,7 +1687,7 @@
     if (!ragdoll.initialized) initializeRagdoll();
     const j = ragdoll.joints;
     const headR = 13;
-    const grip = { x: player.x, y: player.y };
+    const grip = hookHandPosition();
     const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
     const mul = (v, s) => ({ x: v.x * s, y: v.y * s });
     const norm = (v, fallback = { x: 0, y: 1 }) => {
@@ -1648,7 +1717,6 @@
     if (!ragdoll.initialized) initializeRagdoll();
     const j = ragdoll.joints;
     const headR = 13;
-    const grip = { x: player.x, y: player.y };
     const speed = hypot(player.vx, player.vy);
     const mix = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
     const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
@@ -1666,7 +1734,7 @@
     // silhouette is art-directed: both arms are upper/lower line segments,
     // the gripping arm is kept nearly straight, and legs stay readable.
     const core = stickmanCorePose(false);
-    const { body, side, shoulder, hip, head, neckEnd } = core;
+    const { body, side, shoulder, hip, head, neckEnd, grip } = core;
 
     const trail = norm({ x: -player.vx * 0.045, y: -player.vy * 0.045 + 16 }, body);
     const speedT = clamp(speed / 1200, 0, 1);
