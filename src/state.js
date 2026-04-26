@@ -36,6 +36,7 @@ const crashActionsEl = document.getElementById('crash-actions');
 const crashTitleEl = document.getElementById('crash-title');
 const crashContinueEl = document.getElementById('crash-continue');
 const crashRetryEl = document.getElementById('crash-retry');
+const crashReplayEl = document.getElementById('crash-replay');
 const crashMainMenuEl = document.getElementById('crash-main-menu');
 const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
@@ -394,7 +395,7 @@ function updateRecordsForScore(meters) {
 function refreshScoreAndRecords() {
   furthestX = Math.max(furthestX, player.x);
   scoreMeters = Math.max(0, Math.floor((furthestX - scoreStartX) / WORLD_PX_PER_METER));
-  updateRecordsForScore(scoreMeters);
+  if (!replayMode) updateRecordsForScore(scoreMeters);
   updateScoreHud();
   return scoreMeters;
 }
@@ -431,6 +432,12 @@ let cameraVX = 0;
 let cameraVY = 0;
 let gameOver = false;
 let gamePaused = false;
+const REPLAY_FORMAT_VERSION = 1;
+let replayMode = false;
+let activeReplayRecording = null;
+let activeReplayPlayback = null;
+let replayInputOverride = null;
+let lastCrashReplay = null;
 let gameAudioPrimed = false;
 let audioContext = null;
 let audioLoadStarted = false;

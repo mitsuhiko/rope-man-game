@@ -846,7 +846,8 @@
     }
 
     .crash-button--continue,
-    .crash-button--retry {
+    .crash-button--retry,
+    .crash-button--replay {
       min-width: clamp(132px, 16vw, 168px);
     }
 
@@ -996,6 +997,7 @@
       }
       .crash-button--continue,
       .crash-button--retry,
+      .crash-button--replay,
       .crash-button--main-menu {
         min-width: 0;
         flex: 1;
@@ -1085,6 +1087,7 @@
       <div class="crash-panel-actions">
         <button id="crash-continue" class="crash-button crash-button--continue" type="button" hidden>continue</button>
         <button id="crash-retry" class="crash-button crash-button--retry" type="button">retry</button>
+        <button id="crash-replay" class="crash-button crash-button--replay" type="button" hidden>watch replay</button>
         <button id="crash-main-menu" class="crash-button crash-button--main-menu" type="button">main menu</button>
       </div>
     </section>

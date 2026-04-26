@@ -357,6 +357,10 @@ function returnToMainMenu() {
   gameStarted = false;
   gameOver = false;
   gamePaused = false;
+  replayMode = false;
+  activeReplayPlayback = null;
+  replayInputOverride = null;
+  activeReplayRecording = null;
   setCrashActionsVisible(false);
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setHighScoreMenuVisible(false, { restoreFocus: false });

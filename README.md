@@ -34,7 +34,8 @@ and see how many meters you can survive.
 | Swing left / right | `A` / `D` or `←` / `→` |
 | Reel rope in / out | `W` / `S` or `↑` / `↓` |
 | Retry current seed | `R` |
-| Pause | `Esc` |
+| Watch last crash replay | `P` on the crash screen |
+| Pause / leave replay | `Esc` |
 | Main menu after a crash | `H` |
 
 ### Touch

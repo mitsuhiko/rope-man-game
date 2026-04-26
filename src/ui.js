@@ -1,11 +1,13 @@
 // Crash overlay, touch controls, and mobile browser guards.
 
 function inputAxisX() {
+  if (replayInputOverride) return clamp(Number(replayInputOverride.x) || 0, -1, 1);
   const keyboard = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   return clamp(keyboard + touchInput.x, -1, 1);
 }
 
 function inputAxisY() {
+  if (replayInputOverride) return clamp(Number(replayInputOverride.y) || 0, -1, 1);
   const keyboard = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
   return clamp(keyboard + touchInput.y, -1, 1);
 }
@@ -119,7 +121,9 @@ function setRunMenuContent(options) {
     stats = '',
     help = [],
     continueVisible = false,
+    replayVisible = false,
     retryLabel = 'retry',
+    replayLabel = 'watch replay',
     mainMenuLabel = 'main menu',
   } = options;
 
@@ -134,7 +138,9 @@ function setRunMenuContent(options) {
     }));
   }
   setButtonVisible(crashContinueEl, continueVisible);
+  setButtonVisible(crashReplayEl, replayVisible);
   if (crashRetryEl) crashRetryEl.textContent = retryLabel;
+  if (crashReplayEl) crashReplayEl.textContent = replayLabel;
   if (crashMainMenuEl) crashMainMenuEl.textContent = mainMenuLabel;
 }
 
@@ -152,6 +158,11 @@ function showPauseMenu() {
 
 function updateCrashSummary() {
   const attemptLabel = seedAttempts === 1 ? 'attempt 1' : `attempt ${seedAttempts}`;
+  const canReplay = typeof canWatchCrashReplay === 'function' && canWatchCrashReplay();
+  const help = ['space / R: retry current seed'];
+  if (canReplay) help.push('P: watch replay');
+  help.push('H: main menu');
+
   let message = '';
   if (runHadOverallRecord) {
     message = runHadSeedRecord ? 'new overall + seed record!' : 'new overall record!';
@@ -162,9 +173,11 @@ function updateCrashSummary() {
     title: 'CRASH',
     record: message,
     stats: `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}`,
-    help: ['space / R: retry current seed', 'H: main menu'],
+    help,
     continueVisible: false,
+    replayVisible: canReplay,
     retryLabel: 'retry',
+    replayLabel: 'watch replay',
     mainMenuLabel: 'main menu',
   });
 }
@@ -190,6 +203,9 @@ function setupCrashControls() {
 
   bind(crashContinueEl, resumeGame);
   bind(crashRetryEl, retryCurrentSeed);
+  bind(crashReplayEl, () => {
+    if (typeof startCrashReplay === 'function') startCrashReplay();
+  });
   bind(crashMainMenuEl, returnToMainMenu);
 }
 

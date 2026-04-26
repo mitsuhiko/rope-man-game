@@ -1,6 +1,9 @@
 // Core game loop, player physics, input actions, and bootstrap.
 
-function reset() {
+function reset(options = {}) {
+  const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
+  const recordRun = options.recordRun ?? (gameStarted && !replayMode);
+
   rngState = gameSeedValue;
   cameraX = 0;
   cameraY = 0;
@@ -57,15 +60,189 @@ function reset() {
   hookArm.y = player.y;
   cameraX = player.x - W * 0.42;
   cameraY = player.y - H * 0.52;
-  if (gameStarted) {
+  if (countAttempt) {
     beginSeedAttempt();
   } else {
     syncCurrentSeedStats();
     updateScoreHud();
   }
+
+  if (recordRun) {
+    startReplayRecording();
+  } else {
+    activeReplayRecording = null;
+  }
+}
+
+// Replays are input re-simulations: every update stores the elapsed dt,
+// movement axes, and hook/release presses that happened before that update.
+function startReplayRecording() {
+  activeReplayRecording = {
+    version: REPLAY_FORMAT_VERSION,
+    seedValue: gameSeedValue,
+    seedText: gameSeedText,
+    frames: [],
+    actionCounts: Object.create(null),
+    duration: 0,
+    characterAppearance: { ...characterAppearance },
+  };
+}
+
+function recordReplayAction() {
+  if (replayMode || gameOver || !activeReplayRecording) return;
+  const frameIndex = activeReplayRecording.frames.length;
+  activeReplayRecording.actionCounts[frameIndex] =
+    (activeReplayRecording.actionCounts[frameIndex] || 0) + 1;
+}
+
+function recordReplayFrame(dt) {
+  if (replayMode || gameOver || !activeReplayRecording) return;
+  const frameIndex = activeReplayRecording.frames.length;
+  const frameDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
+  const actions = activeReplayRecording.actionCounts[frameIndex] || 0;
+  activeReplayRecording.frames.push({
+    dt: frameDt,
+    x: inputAxisX(),
+    y: inputAxisY(),
+    a: actions,
+  });
+  activeReplayRecording.duration += frameDt;
+  delete activeReplayRecording.actionCounts[frameIndex];
+}
+
+function finalizeReplayRecording() {
+  if (!activeReplayRecording) return;
+  const replay = activeReplayRecording;
+  activeReplayRecording = null;
+  delete replay.actionCounts;
+  replay.finalScore = runFinalScore || scoreMeters;
+  replay.deathFrame = Math.max(0, replay.frames.length - 1);
+  replay.crash = {
+    scoreMeters,
+    runFinalScore: runFinalScore || scoreMeters,
+    seedAttempts,
+    runHadOverallRecord,
+    runHadSeedRecord,
+    seedValue: gameSeedValue,
+    seedText: gameSeedText,
+  };
+  lastCrashReplay = replay.frames.length ? replay : null;
+}
+
+function canWatchCrashReplay() {
+  return Boolean(
+    gameOver &&
+    !replayMode &&
+    lastCrashReplay &&
+    lastCrashReplay.frames &&
+    lastCrashReplay.frames.length &&
+    lastCrashReplay.seedValue === gameSeedValue
+  );
+}
+
+function restoreCrashSummaryFromReplay(replay) {
+  if (!replay || !replay.crash) return;
+  const crash = replay.crash;
+  if (crash.seedValue && crash.seedValue !== gameSeedValue) setGameSeed(crash.seedValue, { writeUrl: false });
+  scoreMeters = Math.max(0, Math.floor(Number(crash.scoreMeters) || 0));
+  runFinalScore = Math.max(0, Math.floor(Number(crash.runFinalScore) || scoreMeters));
+  seedAttempts = Math.max(0, Math.floor(Number(crash.seedAttempts) || seedAttempts));
+  runHadOverallRecord = Boolean(crash.runHadOverallRecord);
+  runHadSeedRecord = Boolean(crash.runHadSeedRecord);
+  updateScoreHud();
+}
+
+function startCrashReplay() {
+  if (!canWatchCrashReplay()) return;
+  const replay = lastCrashReplay;
+  replayMode = true;
+  activeReplayPlayback = {
+    replay,
+    index: 0,
+    realElapsed: 0,
+    simElapsed: 0,
+  };
+  replayInputOverride = null;
+  activeReplayRecording = null;
+  keys.left = false;
+  keys.right = false;
+  keys.up = false;
+  keys.down = false;
+  resetJoystickInput();
+  stopGameOverSound();
+  setCrashActionsVisible(false);
+  setGameSeed(replay.seedValue, { writeUrl: false });
+  gameStarted = true;
+  reset({ countAttempt: false, recordRun: false });
+  last = 0;
+}
+
+function finishCrashReplay() {
+  const replay = activeReplayPlayback ? activeReplayPlayback.replay : lastCrashReplay;
+  activeReplayPlayback = null;
+  replayInputOverride = null;
+  replayMode = false;
+  activeReplayRecording = null;
+  gamePaused = false;
+  gameOver = true;
+  keys.left = false;
+  keys.right = false;
+  keys.up = false;
+  keys.down = false;
+  resetJoystickInput();
+  stopGameOverSound();
+  restoreCrashSummaryFromReplay(replay);
+  updateCrashSummary();
+  setCrashActionsVisible(true);
+  last = 0;
+}
+
+function runReplayFrame(frame) {
+  replayInputOverride = {
+    x: Number(frame.x) || 0,
+    y: Number(frame.y) || 0,
+  };
+  const actions = Math.max(0, Math.floor(Number(frame.a) || 0));
+  for (let i = 0; i < actions; i += 1) {
+    inputAction({ record: false, audio: true, retryOnGameOver: false });
+  }
+  update(Number.isFinite(frame.dt) && frame.dt > 0 ? frame.dt : 0);
+  replayInputOverride = null;
+}
+
+function updateReplayPlayback(realDt) {
+  const playback = activeReplayPlayback;
+  if (!playback || !playback.replay || !playback.replay.frames) return;
+
+  playback.realElapsed += Number.isFinite(realDt) && realDt > 0 ? realDt : 0;
+  let steps = 0;
+  const maxSteps = 12;
+
+  while (playback.index < playback.replay.frames.length && steps < maxSteps) {
+    const frame = playback.replay.frames[playback.index];
+    const frameDt = Number.isFinite(frame.dt) && frame.dt > 0 ? frame.dt : 0;
+    if (playback.simElapsed + frameDt > playback.realElapsed && !(steps === 0 && frameDt === 0)) break;
+
+    runReplayFrame(frame);
+    playback.simElapsed += frameDt;
+    playback.index += 1;
+    steps += 1;
+    if (gameOver) break;
+  }
+
+  if (steps >= maxSteps) {
+    playback.realElapsed = Math.min(playback.realElapsed, playback.simElapsed + 0.2);
+  }
+
+  if (gameOver || playback.index >= playback.replay.frames.length) {
+    finishCrashReplay();
+  }
 }
 
 function retryCurrentSeed() {
+  replayMode = false;
+  activeReplayPlayback = null;
+  replayInputOverride = null;
   gamePaused = false;
   reset();
 }
@@ -148,13 +325,20 @@ function updateFocus() {
   }
 }
 
-function inputAction() {
+function inputAction(options = {}) {
+  const {
+    record = true,
+    audio = true,
+    retryOnGameOver = true,
+  } = options;
   if (!gameStarted || gamePaused) return;
-  primeGameAudio();
+  if (replayMode && record) return;
+  if (audio) primeGameAudio();
   if (gameOver) {
-    retryCurrentSeed();
+    if (retryOnGameOver) retryCurrentSeed();
     return;
   }
+  if (record) recordReplayAction();
   if (player.attached) {
     updateFocus();
     lockedAnchor = focusedAnchor;
@@ -165,7 +349,7 @@ function inputAction() {
     player.attached = false;
     player.anchor = null;
     ropeShot = null;
-    playHookReleaseSound();
+    if (audio) playHookReleaseSound();
     return;
   }
   if (ropeShot) return;
@@ -179,13 +363,18 @@ function inputAction() {
         t: 0,
         duration: clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION),
       };
-      playHookSound();
+      if (audio) playHookSound();
     }
   }
 }
 
 window.addEventListener('keydown', (e) => {
   if (!gameStarted) return;
+  if (replayMode) {
+    e.preventDefault();
+    if (e.code === 'Escape') finishCrashReplay();
+    return;
+  }
   if (e.code === 'Escape') {
     e.preventDefault();
     if (!gameOver) togglePause();
@@ -203,6 +392,9 @@ window.addEventListener('keydown', (e) => {
   } else if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
     e.preventDefault();
     retryCurrentSeed();
+  } else if (gameOver && e.code === 'KeyP') {
+    e.preventDefault();
+    startCrashReplay();
   } else if (gameOver && e.code === 'KeyH') {
     e.preventDefault();
     returnToMainMenu();
@@ -242,6 +434,10 @@ window.addEventListener('keyup', (e) => {
 });
 window.addEventListener('pointerdown', (e) => {
   if (!gameStarted || gamePaused) return;
+  if (replayMode) {
+    e.preventDefault();
+    return;
+  }
   if (e.target.closest && e.target.closest('.touch-controls')) return;
   e.preventDefault();
   primeGameAudio();
@@ -426,10 +622,15 @@ function die() {
   if (gameOver) return;
   gamePaused = false;
   runFinalScore = refreshScoreAndRecords();
+  if (!replayMode) finalizeReplayRecording();
   gameOver = true;
-  updateCrashSummary();
-  setCrashActionsVisible(true);
-  playGameOverSound();
+  if (!replayMode) {
+    updateCrashSummary();
+    setCrashActionsVisible(true);
+    playGameOverSound();
+  } else {
+    setCrashActionsVisible(false);
+  }
   player.attached = false;
   player.anchor = null;
   lockedAnchor = null;
@@ -463,6 +664,7 @@ function draw() {
   drawObstacles();
   drawAnchors();
   drawRopeAndPlayer();
+  if (replayMode) drawReplayBadge();
   if (DEBUG_HITBOXES) drawDebugHitboxes();
 
   if (gameOver || gamePaused) drawCrashCard();
@@ -474,11 +676,40 @@ function drawCrashCard() {
   // real clickable/focusable controls on both desktop and mobile.
 }
 
+function drawReplayBadge() {
+  const text = 'replay · esc to crash screen';
+  ctx.save();
+  ctx.font = '900 24px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
+  ctx.textBaseline = 'middle';
+  const paddingX = 16;
+  const width = Math.ceil(ctx.measureText(text).width + paddingX * 2);
+  const height = 44;
+  const x = W - width - 24;
+  const y = 22;
+  ctx.globalAlpha = 0.88;
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(x, y, width, height);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, width, height);
+  ctx.fillStyle = INK;
+  ctx.fillText(text, x + paddingX, y + height / 2 + 1);
+  ctx.restore();
+}
+
 function frame(ts) {
   if (!last) last = ts;
   const dt = Math.min(0.033, (ts - last) / 1000);
   last = ts;
-  if (gameStarted && !gamePaused) update(dt);
+  if (gameStarted && !gamePaused && (!gameOver || replayMode)) {
+    if (replayMode) {
+      updateReplayPlayback(dt);
+    } else {
+      recordReplayFrame(dt);
+      update(dt);
+    }
+  }
   draw();
   requestAnimationFrame(frame);
 }
