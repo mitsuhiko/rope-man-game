@@ -1,4 +1,4 @@
-PORT ?= 8009
+PORT ?= 8010
 
 .PHONY: serve
 serve:
@@ -7,7 +7,7 @@ serve:
 		'import os' \
 		'import socketserver' \
 		'' \
-		'PORT = int(os.environ.get("PORT", "8009"))' \
+		'PORT = int(os.environ.get("PORT", "8010"))' \
 		'' \
 		'class NoCacheHandler(http.server.SimpleHTTPRequestHandler):' \
 		'    def send_head(self):' \
