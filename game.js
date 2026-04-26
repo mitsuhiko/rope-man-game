@@ -10,8 +10,10 @@
   const touchStickEl = document.getElementById('touch-stick');
   const gameOverSound = new Audio('game-over.wav');
   const hookSound = new Audio('hook-swoosh.wav');
-  const gameSounds = [gameOverSound, hookSound];
+  const hookReleaseSound = new Audio('hook-release.wav');
+  const gameSounds = [gameOverSound, hookSound, hookReleaseSound];
   for (const sound of gameSounds) sound.preload = 'auto';
+  gameOverSound.volume = 0.72;
 
   const INK = '#111111';
   const PAPER = '#fffdf7';
@@ -321,6 +323,18 @@
     if (promise && promise.catch) promise.catch(() => {});
   }
 
+  function playHookReleaseSound() {
+    hookReleaseSound.muted = false;
+    hookReleaseSound.pause();
+    try {
+      hookReleaseSound.currentTime = 0;
+    } catch (_) {
+      // Some mobile browsers only allow seeking after metadata has loaded.
+    }
+    const promise = hookReleaseSound.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  }
+
   function playGameOverSound() {
     gameOverSound.muted = false;
     gameOverSound.pause();
@@ -625,6 +639,7 @@
       player.attached = false;
       player.anchor = null;
       ropeShot = null;
+      playHookReleaseSound();
       return;
     }
     if (ropeShot) return;
