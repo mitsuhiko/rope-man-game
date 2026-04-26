@@ -10,6 +10,9 @@ function setStartSeedError(message) {
 function setStartScreenVisible(visible) {
   if (gameShellEl) gameShellEl.classList.toggle('is-starting', visible);
   if (startScreenEl) startScreenEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  if (visible && typeof checkForAppUpdate === 'function') {
+    checkForAppUpdate({ reloadWhenReady: true });
+  }
 }
 
 function updateStartSettingsUi() {
