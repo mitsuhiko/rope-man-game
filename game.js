@@ -824,6 +824,8 @@ function sx(x) { return x - cameraX; }
 function sy(y) { return y - cameraY; }
 
 function draw() {
+  if (gameShellEl) gameShellEl.classList.toggle('is-replaying', replayMode);
+
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, screenW, screenH);
   ctx.fillStyle = PAPER;
