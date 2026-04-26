@@ -441,6 +441,151 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 
+function setupPerfLogging() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('perf') !== '1') return;
+
+  const intervalMs = Math.max(1000, Number(params.get('perfInterval') || 5000));
+  const perf = {
+    startedAt: performance.now(),
+    lastReportAt: performance.now(),
+    calls: {},
+    frameTimes: [],
+    frameDeltas: [],
+    lastFrameTs: 0,
+  };
+  window.__ropePerf = perf;
+
+  const wrap = (name) => {
+    const fn = window[name];
+    if (typeof fn !== 'function') return;
+    const wrapped = function(...args) {
+      const t0 = performance.now();
+      try {
+        return fn.apply(this, args);
+      } finally {
+        const dt = performance.now() - t0;
+        const stats = perf.calls[name] || (perf.calls[name] = { count: 0, total: 0, max: 0 });
+        stats.count += 1;
+        stats.total += dt;
+        stats.max = Math.max(stats.max, dt);
+        if (name === 'frame') {
+          perf.frameTimes.push(dt);
+          const ts = args[0];
+          if (perf.lastFrameTs) perf.frameDeltas.push(ts - perf.lastFrameTs);
+          perf.lastFrameTs = ts;
+        }
+      }
+    };
+    window[name] = wrapped;
+    try {
+      // Top-level function declarations in classic scripts have lexical
+      // bindings as well as window properties; reassign both so calls from
+      // other game functions go through the wrapper too.
+      (0, eval)(`${name} = window.${name}`);
+    } catch (_) {
+      // Ignore if a browser ever refuses the reassignment.
+    }
+  };
+
+  [
+    'frame',
+    'update',
+    'draw',
+    'updateFocus',
+    'generateUntil',
+    'refreshScoreAndRecords',
+    'updateAttachedPhysics',
+    'updateRagdoll',
+    'solveRagdollConstraints',
+    'updateHookArmAim',
+    'hitsObstacle',
+    'obstacleHitboxes',
+    'playerHitboxes',
+    'terrainSolidHitbox',
+    'terrainLiquidHitboxes',
+    'terrainPoolPolygons',
+    'terrainPoints',
+    'terrainYAt',
+    'drawBackground',
+    'drawTerrain',
+    'drawTerrainPool',
+    'drawObstacles',
+    'drawGate',
+    'drawSaw',
+    'drawSpikes',
+    'drawBar',
+    'drawAnchors',
+    'drawRopeAndPlayer',
+    'drawStickman',
+  ].forEach(wrap);
+
+  const percentile = (values, p) => {
+    if (!values.length) return 0;
+    const sorted = values.slice().sort((a, b) => a - b);
+    return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+  };
+
+  const resetWindow = () => {
+    perf.calls = {};
+    perf.frameTimes = [];
+    perf.frameDeltas = [];
+    perf.lastFrameTs = 0;
+    perf.lastReportAt = performance.now();
+  };
+
+  setInterval(() => {
+    const now = performance.now();
+    const seconds = Math.max(0.001, (now - perf.lastReportAt) / 1000);
+    const frames = perf.calls.frame ? perf.calls.frame.count : 0;
+    const frameWorkTotal = perf.calls.frame ? perf.calls.frame.total : 0;
+    const rows = Object.entries(perf.calls)
+      .filter(([name]) => name !== 'frame')
+      .map(([name, stats]) => ({
+        name,
+        calls: stats.count,
+        totalMs: Number(stats.total.toFixed(2)),
+        avgMs: Number((stats.total / stats.count).toFixed(4)),
+        maxMs: Number(stats.max.toFixed(3)),
+        msPerFrame: Number((stats.total / Math.max(1, frames)).toFixed(4)),
+        pctFrameWork: Number((stats.total / Math.max(0.001, frameWorkTotal) * 100).toFixed(1)),
+      }))
+      .sort((a, b) => b.totalMs - a.totalMs)
+      .slice(0, 18);
+
+    const memory = performance.memory ? {
+      usedMB: Number((performance.memory.usedJSHeapSize / 1048576).toFixed(1)),
+      totalMB: Number((performance.memory.totalJSHeapSize / 1048576).toFixed(1)),
+    } : null;
+
+    console.groupCollapsed(
+      `[perf] ${gameStarted ? (gameOver ? 'game-over' : 'playing') : 'menu'} ` +
+      `${frames} frames/${seconds.toFixed(1)}s ` +
+      `${(frames / seconds).toFixed(1)} fps ` +
+      `frame ${percentile(perf.frameDeltas, 0.5).toFixed(1)}ms p50 / ${percentile(perf.frameDeltas, 0.95).toFixed(1)}ms p95 ` +
+      `work ${(frameWorkTotal / Math.max(1, frames)).toFixed(3)}ms avg`
+    );
+    console.log({
+      frames,
+      seconds: Number(seconds.toFixed(2)),
+      avgFps: Number((frames / seconds).toFixed(2)),
+      frameDeltaP50Ms: Number(percentile(perf.frameDeltas, 0.5).toFixed(2)),
+      frameDeltaP95Ms: Number(percentile(perf.frameDeltas, 0.95).toFixed(2)),
+      frameWorkAvgMs: Number((frameWorkTotal / Math.max(1, frames)).toFixed(4)),
+      frameWorkP95Ms: Number(percentile(perf.frameTimes, 0.95).toFixed(4)),
+      memory,
+      player: { x: Math.round(player.x), y: Math.round(player.y), vx: Math.round(player.vx), vy: Math.round(player.vy) },
+      counts: { anchors: anchors.length, obstacles: obstacles.length, terrainKnots: terrainKnots.length, terrainPools: terrainPools.length },
+    });
+    console.table(rows);
+    console.groupEnd();
+    resetWindow();
+  }, intervalMs);
+
+  console.info(`[perf] enabled; reporting every ${intervalMs}ms. Open with ?perf=1 or ?perf=1&perfInterval=10000.`);
+}
+
+setupPerfLogging();
 startGameAudioLoad();
 setupMobileZoomGuard();
 setupStartControls();
