@@ -1,0 +1,785 @@
+// Level generation, terrain, obstacles, collisions, and world rendering.
+
+function seedBackground() {
+  for (let i = 0; i < 80; i++) {
+    bgShapes.push(makeBgShape(rand(-300, W * 5)));
+  }
+}
+
+function makeBgShape(x) {
+  return {
+    x,
+    y: rand(80, Math.max(180, H - 120)),
+    size: rand(18, 86),
+    sides: Math.floor(rand(0, 4)),
+    shade: random() < 0.5 ? BG1 : BG2,
+    layer: random() < 0.55 ? 0.28 : 0.48,
+    rot: rand(0, Math.PI),
+  };
+}
+
+function addAnchor(x, y) {
+  anchors.push({ id: anchors.length + 1, x, y, r: 8 });
+}
+
+function generateUntil(worldX) {
+  generateTerrainUntil(worldX);
+
+  // Obstacles and pools define unsafe hanging zones below anchors, so place
+  // them before anchors.  This lets anchor generation keep a conservative
+  // vertical buffer above lower gate lips and liquid surfaces.
+  while (nextObstacleX < worldX + ANCHOR_GATE_HORIZONTAL_CLEARANCE) {
+    spawnObstacleCluster(nextObstacleX, spawnIndex++);
+    nextObstacleX += rand(650, 980);
+  }
+
+  while (nextAnchorX < worldX) {
+    const difficulty = clamp(nextAnchorX / 5000, 0, 1);
+    const gap = rand(260, 420 + difficulty * 90);
+    const wave = Math.sin(nextAnchorX / 680) * 95;
+    const maxAnchorY = Math.min(
+      terrainYAt(nextAnchorX) - ANCHOR_TERRAIN_CLEARANCE,
+      anchorHazardMaxY(nextAnchorX),
+    );
+    const minAnchorY = ANCHOR_BASE_MIN_Y + wave;
+    const preferredMaxAnchorY = Math.min(ANCHOR_BASE_MAX_Y + wave + difficulty * 80, maxAnchorY);
+    const y = clamp(rand(minAnchorY, preferredMaxAnchorY), ANCHOR_MIN_Y, maxAnchorY);
+    addAnchor(nextAnchorX, y);
+    nextAnchorX += gap;
+  }
+}
+
+function anchorHazardMaxY(x) {
+  let maxY = Infinity;
+
+  for (const o of obstacles) {
+    if (o.type !== 'gate') continue;
+    if (x < o.x - ANCHOR_GATE_HORIZONTAL_CLEARANCE || x > o.x + o.w + ANCHOR_GATE_HORIZONTAL_CLEARANCE) continue;
+
+    // Gate gaps animate wider/narrower. The lower bar is most dangerous when
+    // the gap is narrowest, because its top edge is closest to the anchor.
+    const minGap = o.gap * 0.75;
+    const lowerBarTop = o.gapY + minGap / 2;
+    maxY = Math.min(maxY, lowerBarTop - ANCHOR_GATE_BOTTOM_CLEARANCE);
+  }
+
+  for (const pool of terrainPools) {
+    if (x < pool.x - ANCHOR_LIQUID_HORIZONTAL_CLEARANCE || x > pool.x + pool.w + ANCHOR_LIQUID_HORIZONTAL_CLEARANCE) continue;
+    maxY = Math.min(maxY, pool.levelY - ANCHOR_LIQUID_VERTICAL_CLEARANCE);
+  }
+
+  return maxY;
+}
+
+function spawnObstacleCluster(x, i) {
+  const difficulty = clamp(x / 5500, 0, 1);
+  const roll = random();
+  const groundY = terrainYAt(x);
+
+  if (i < 1) {
+    obstacles.push({ type: 'gate', x, w: 26, gapY: H * 0.54, gap: 360, phase: rand(0, Math.PI * 2), speed: 0.65 });
+    return;
+  }
+
+  if (roll < 0.23) {
+    obstacles.push({
+      type: 'gate',
+      x,
+      w: 28,
+      gapY: rand(H * 0.38, H * 0.64),
+      gap: rand(300 - difficulty * 45, 390 - difficulty * 40),
+      phase: rand(0, Math.PI * 2),
+      speed: rand(0.55, 1.15 + difficulty * 0.25),
+    });
+  } else if (roll < 0.56) {
+    obstacles.push({
+      type: 'saw',
+      x,
+      y: rand(H * 0.30, clamp(groundY - 105, H * 0.42, H * 0.68)),
+      r: rand(24, 38),
+      spin: rand(-1, 1) < 0 ? -1 : 1,
+      bob: rand(95, 180),
+      phase: rand(0, Math.PI * 2),
+    });
+  } else {
+    const ceiling = random() < 0.30;
+    const size = rand(22, 31);
+    const count = Math.floor(rand(4, 9));
+    const spikeX = x + (ceiling ? 0 : rand(-50, 95));
+    obstacles.push({
+      type: 'spikes',
+      x: spikeX,
+      y: ceiling ? 34 : 0,
+      count,
+      dir: ceiling ? 1 : -1,
+      size,
+      ground: !ceiling,
+      height: ceiling ? size : size * rand(1.45, 1.95),
+    });
+  }
+}
+
+
+function smoothstep01(t) {
+  t = clamp(t, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function resetTerrain() {
+  terrainKnots = [];
+  terrainPools = [];
+  terrainCursorX = -1150;
+  terrainLastY = H - 128 + TERRAIN_DROP;
+  nextTerrainPoolX = 1040;
+
+  addTerrainKnot(-1150, H - 128 + TERRAIN_DROP);
+  addTerrainKnot(-820, H - 210 + TERRAIN_DROP);
+  addTerrainKnot(-460, H - 145 + TERRAIN_DROP);
+  addTerrainKnot(-120, H - 118 + TERRAIN_DROP);
+  addTerrainKnot(250, H - 155 + TERRAIN_DROP);
+}
+
+function addTerrainKnot(x, y) {
+  const clampedY = clamp(y, TERRAIN_MIN_Y, TERRAIN_MAX_Y);
+  terrainKnots.push({ x, y: clampedY });
+  terrainCursorX = x;
+  terrainLastY = clampedY;
+}
+
+function generateTerrainUntil(worldX) {
+  while (terrainCursorX < worldX + TERRAIN_BUFFER + TERRAIN_POOL_MAX_W) {
+    const gap = rand(TERRAIN_KNOT_MIN, TERRAIN_KNOT_MAX);
+    const x = terrainCursorX + gap;
+    const mid = (TERRAIN_MIN_Y + TERRAIN_MAX_Y) / 2;
+    const lastWasHill = terrainLastY < mid;
+    const makeValley = lastWasHill ? random() < 0.78 : random() < 0.34;
+    let y = makeValley ? rand(mid + 42, TERRAIN_MAX_Y) : rand(TERRAIN_MIN_Y, mid - 24);
+
+    // A low-frequency wobble keeps the silhouette from becoming a simple
+    // alternating sine wave while still staying smooth and readable.
+    y += Math.sin(x / 1180) * 28 + Math.sin(x / 570 + 1.7) * 18;
+    if (Math.abs(y - terrainLastY) < 55) {
+      y += (y >= terrainLastY ? 1 : -1) * rand(55, 110);
+    }
+    addTerrainKnot(x, y);
+  }
+
+  generateTerrainPoolsUntil(worldX + TERRAIN_BUFFER * 0.35);
+}
+
+function generateTerrainPoolsUntil(worldX) {
+  while (nextTerrainPoolX < worldX) {
+    const seedX = nextTerrainPoolX + rand(0, 260);
+    const searchW = rand(TERRAIN_POOL_MIN_W, TERRAIN_POOL_MAX_W);
+    const valley = terrainValleyInRange(seedX, seedX + searchW);
+    const stats = terrainRangeStats(seedX, seedX + searchW, 42);
+    const depth = valley.y - stats.minY;
+
+    if (depth > 56) {
+      const waterDepth = rand(42, Math.max(54, Math.min(130, depth * 0.72)));
+      const levelY = clamp(valley.y - waterDepth, stats.minY + 20, valley.y - 24);
+      const leftEdge = terrainLevelCrossing(valley.x, levelY, -1, TERRAIN_POOL_MAX_W * 0.9);
+      const rightEdge = terrainLevelCrossing(valley.x, levelY, 1, TERRAIN_POOL_MAX_W * 0.9);
+
+      if (leftEdge != null && rightEdge != null && rightEdge - leftEdge >= TERRAIN_POOL_MIN_W * 0.45) {
+        terrainPools.push({
+          type: random() < 0.62 ? 'water' : 'lava',
+          x: leftEdge,
+          w: rightEdge - leftEdge,
+          levelY,
+          waveAmp: rand(3.5, 6.5),
+          waveOffset: rand(0, Math.PI * 2),
+        });
+        nextTerrainPoolX = rightEdge + rand(620, 1280);
+        continue;
+      }
+    }
+
+    nextTerrainPoolX = seedX + searchW + rand(620, 1280);
+  }
+}
+
+function terrainValleyInRange(left, right, step = TERRAIN_POOL_SCAN_STEP) {
+  let valleyX = left;
+  let valleyY = terrainYAt(left);
+  for (let x = left + step; x <= right; x += step) {
+    const y = terrainYAt(x);
+    if (y > valleyY) {
+      valleyX = x;
+      valleyY = y;
+    }
+  }
+  const endY = terrainYAt(right);
+  if (endY > valleyY) {
+    valleyX = right;
+    valleyY = endY;
+  }
+  return { x: valleyX, y: valleyY };
+}
+
+function terrainLevelCrossing(startX, levelY, dir, maxDistance) {
+  let prevX = startX;
+  let prevD = terrainYAt(prevX) - levelY;
+  if (prevD <= 0) return null;
+
+  for (let distance = TERRAIN_POOL_SCAN_STEP; distance <= maxDistance; distance += TERRAIN_POOL_SCAN_STEP) {
+    const x = startX + dir * distance;
+    const d = terrainYAt(x) - levelY;
+    if (d <= 0) {
+      const t = clamp(prevD / (prevD - d), 0, 1);
+      return prevX + (x - prevX) * t;
+    }
+    prevX = x;
+    prevD = d;
+  }
+
+  return null;
+}
+
+function terrainRangeStats(left, right, step = 48) {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let x = left; x <= right; x += step) {
+    const y = terrainYAt(x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const endY = terrainYAt(right);
+  return { minY: Math.min(minY, endY), maxY: Math.max(maxY, endY) };
+}
+
+function terrainYAt(worldX) {
+  if (!terrainKnots.length) return H - 120;
+  if (worldX <= terrainKnots[0].x) return terrainKnots[0].y;
+
+  for (let i = 0; i < terrainKnots.length - 1; i++) {
+    const a = terrainKnots[i];
+    const b = terrainKnots[i + 1];
+    if (worldX <= b.x) {
+      const p0 = terrainKnots[Math.max(0, i - 1)];
+      const p3 = terrainKnots[Math.min(terrainKnots.length - 1, i + 2)];
+      const t = smoothstep01((worldX - a.x) / Math.max(1, b.x - a.x));
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const y = 0.5 * (
+        2 * a.y +
+        (-p0.y + b.y) * t +
+        (2 * p0.y - 5 * a.y + 4 * b.y - p3.y) * t2 +
+        (-p0.y + 3 * a.y - 3 * b.y + p3.y) * t3
+      );
+      return clamp(y, TERRAIN_MIN_Y - 20, TERRAIN_MAX_Y + 20);
+    }
+  }
+
+  return terrainKnots[terrainKnots.length - 1].y;
+}
+
+function terrainPoints(left, right, step = TERRAIN_STEP) {
+  const points = [];
+  points.push({ x: left, y: terrainYAt(left) });
+  for (let x = Math.ceil(left / step) * step; x < right; x += step) {
+    if (x > left) points.push({ x, y: terrainYAt(x) });
+  }
+  if (right > left) points.push({ x: right, y: terrainYAt(right) });
+  return points;
+}
+
+function terrainLiquidSurfaceY(pool, worldX) {
+  const localX = worldX - pool.x;
+  return pool.levelY +
+    Math.sin(time * 3.2 + pool.waveOffset + localX * 0.055) * pool.waveAmp +
+    Math.sin(time * 1.15 + pool.waveOffset * 1.7 + localX * 0.018) * 1.8;
+}
+
+function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
+  const start = Math.max(pool.x, left);
+  const end = Math.min(pool.x + pool.w, right);
+  if (end - start < 2) return [];
+
+  const terrain = terrainPoints(start, end, TERRAIN_POOL_STEP);
+  const polys = [];
+  let surface = [];
+  let ground = [];
+  const wetThreshold = 1;
+  const wetness = (p) => p.y - pool.levelY;
+  const surfaceY = (p) => Math.min(terrainLiquidSurfaceY(pool, p.x), p.y - wetThreshold);
+  const addPoint = (p) => {
+    surface.push({ x: p.x, y: surfaceY(p) });
+    ground.push({ x: p.x, y: p.y });
+  };
+  const addCrossing = (a, b, da, db) => {
+    const denom = db - da;
+    const t = Math.abs(denom) < 0.0001 ? 0.5 : clamp((wetThreshold - da) / denom, 0, 1);
+    const x = a.x + (b.x - a.x) * t;
+    addPoint({ x, y: terrainYAt(x) });
+  };
+  const finish = () => {
+    if (surface.length >= 2) {
+      polys.push({
+        surface,
+        ground,
+        points: surface.concat([...ground].reverse()),
+      });
+    }
+    surface = [];
+    ground = [];
+  };
+
+  let prev = null;
+  let prevWetness = 0;
+  for (const p of terrain) {
+    const d = wetness(p);
+    if (d > wetThreshold) {
+      if (prev && prevWetness <= wetThreshold) {
+        addCrossing(prev, p, prevWetness, d);
+      }
+      addPoint(p);
+    } else {
+      if (prev && prevWetness > wetThreshold) {
+        addCrossing(prev, p, prevWetness, d);
+      }
+      finish();
+    }
+    prev = p;
+    prevWetness = d;
+  }
+  finish();
+  return polys;
+}
+
+function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + W + 320) {
+  const hitboxes = [];
+  for (const pool of terrainPools) {
+    if (pool.x > right || pool.x + pool.w < left) continue;
+    for (const poly of terrainPoolPolygons(pool, left, right)) {
+      hitboxes.push({ shape: 'polygon', kind: pool.type, points: poly.points });
+    }
+  }
+  return hitboxes;
+}
+
+function terrainSolidHitbox(left = cameraX - 320, right = cameraX + W + 320) {
+  const surface = terrainPoints(left, right, TERRAIN_STEP);
+  const bottom = Math.max(LOST_BELOW_Y + 1000, cameraY + H + 1600);
+  return {
+    shape: 'polygon',
+    kind: 'terrain',
+    points: surface.concat([{ x: right, y: bottom }, { x: left, y: bottom }]),
+  };
+}
+
+function pruneTerrain() {
+  const cutoff = cameraX - TERRAIN_BUFFER * 2;
+  while (terrainKnots.length > 8 && terrainKnots[3].x < cutoff) {
+    terrainKnots.shift();
+  }
+  terrainPools = terrainPools.filter(pool => pool.x + pool.w > cutoff);
+}
+
+function obstacleHitboxes() {
+  const hitboxes = [terrainSolidHitbox()];
+  hitboxes.push(...terrainLiquidHitboxes());
+
+  for (const o of obstacles) {
+    if (o.type === 'saw') {
+      hitboxes.push({
+        shape: 'circle',
+        kind: 'saw',
+        x: o.x,
+        y: o.y + Math.sin(time * 1.8 + o.phase) * o.bob,
+        r: o.r * 0.86,
+      });
+    } else if (o.type === 'gate') {
+      const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
+      const gap = o.gap * (0.75 + open * 0.40);
+      const top = o.gapY - gap / 2;
+      const bottom = o.gapY + gap / 2;
+      hitboxes.push({ shape: 'rect', kind: 'gate', x: o.x, y: -GATE_EXTENT, w: o.w, h: top + GATE_EXTENT });
+      hitboxes.push({ shape: 'rect', kind: 'gate', x: o.x, y: bottom, w: o.w, h: GATE_EXTENT });
+    } else if (o.type === 'spikes') {
+      for (let i = 0; i < o.count; i++) {
+        hitboxes.push({ shape: 'polygon', kind: 'spikes', points: spikePolygon(o, i) });
+      }
+    }
+  }
+  return hitboxes;
+}
+
+function hitboxHitsPlayer(hitbox, playerBox) {
+  if (hitbox.shape === 'circle') {
+    return hypot(playerBox.x - hitbox.x, playerBox.y - hitbox.y) < playerBox.r + hitbox.r;
+  }
+  if (hitbox.shape === 'rect') {
+    return circleRect(playerBox.x, playerBox.y, playerBox.r, hitbox.x, hitbox.y, hitbox.w, hitbox.h);
+  }
+  if (hitbox.shape === 'polygon') {
+    return circlePolygon(playerBox.x, playerBox.y, playerBox.r, hitbox.points);
+  }
+  return false;
+}
+
+function hitsObstacle() {
+  const playerBoxes = playerHitboxes();
+  return obstacleHitboxes().some(hitbox => playerBoxes.some(p => hitboxHitsPlayer(hitbox, p)));
+}
+
+function circleRect(cx, cy, cr, rx, ry, rw, rh) {
+  if (rw <= 0 || rh <= 0) return false;
+  const nx = clamp(cx, rx, rx + rw);
+  const ny = clamp(cy, ry, ry + rh);
+  return hypot(cx - nx, cy - ny) < cr;
+}
+
+function spikeTri(x, y, size, dir, height = size) {
+  if (dir < 0) {
+    return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y - height }];
+  }
+  return [{ x, y }, { x: x + size, y }, { x: x + size / 2, y: y + height }];
+}
+
+function groundSpikeTri(x, size, height) {
+  const midX = x + size / 2;
+  const sample = Math.max(6, size * 0.35);
+  const slope = (terrainYAt(midX + sample) - terrainYAt(midX - sample)) / (sample * 2);
+  const inv = 1 / Math.hypot(slope, 1);
+  const nx = slope * inv;
+  const ny = -inv;
+  return [
+    { x, y: terrainYAt(x) + SPIKE_GROUND_INSET },
+    { x: x + size, y: terrainYAt(x + size) + SPIKE_GROUND_INSET },
+    { x: midX + nx * height * 0.18, y: terrainYAt(midX) + ny * height },
+  ];
+}
+
+function spikePolygon(o, i) {
+  const x = o.x + i * o.size;
+  if (o.ground) {
+    return groundSpikeTri(x, o.size, o.height || o.size * 1.6);
+  }
+  return spikeTri(x, o.y, o.size, o.dir, o.height || o.size);
+}
+
+function circlePolygon(cx, cy, r, points) {
+  if (pointInPolygon({ x: cx, y: cy }, points)) return true;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    if (distToSegment(cx, cy, a.x, a.y, b.x, b.y) < r) return true;
+  }
+  return false;
+}
+
+function pointInPolygon(p, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i];
+    const b = points[j];
+    const crosses = (a.y > p.y) !== (b.y > p.y);
+    if (crosses) {
+      const x = (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x;
+      if (p.x < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function distToSegment(px, py, ax, ay, bx, by) {
+  const vx = bx - ax;
+  const vy = by - ay;
+  const wx = px - ax;
+  const wy = py - ay;
+  const c = clamp((wx * vx + wy * vy) / (vx * vx + vy * vy), 0, 1);
+  return hypot(px - (ax + vx * c), py - (ay + vy * c));
+}
+
+
+function drawDebugHitboxes() {
+  const drawPath = (hitbox) => {
+    ctx.beginPath();
+    if (hitbox.shape === 'circle') {
+      ctx.arc(sx(hitbox.x), sy(hitbox.y), hitbox.r, 0, Math.PI * 2);
+    } else if (hitbox.shape === 'rect') {
+      ctx.rect(sx(hitbox.x), sy(hitbox.y), hitbox.w, hitbox.h);
+    } else if (hitbox.shape === 'polygon') {
+      const [first, ...rest] = hitbox.points;
+      ctx.moveTo(sx(first.x), sy(first.y));
+      for (const p of rest) ctx.lineTo(sx(p.x), sy(p.y));
+      ctx.closePath();
+    }
+  };
+
+  ctx.save();
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 5]);
+
+  const playerBoxes = playerHitboxes();
+  for (const playerBox of playerBoxes) {
+    drawPath(playerBox);
+    ctx.fillStyle = 'rgba(0, 95, 255, 0.14)';
+    ctx.strokeStyle = '#005fff';
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  for (const hitbox of obstacleHitboxes()) {
+    const hit = playerBoxes.some(playerBox => hitboxHitsPlayer(hitbox, playerBox));
+    drawPath(hitbox);
+    ctx.fillStyle = hit ? 'rgba(255, 0, 0, 0.28)' : 'rgba(255, 0, 160, 0.10)';
+    ctx.strokeStyle = hit ? '#ff0000' : '#ff0099';
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Lost-state threshold is not a collision hitbox, but it is useful in
+  // debug mode because it explains the below-world death condition.
+  ctx.strokeStyle = '#ff8a00';
+  ctx.setLineDash([14, 9]);
+  ctx.beginPath();
+  ctx.moveTo(0, sy(LOST_BELOW_Y));
+  ctx.lineTo(W, sy(LOST_BELOW_Y));
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawBackground() {
+  ctx.save();
+  for (const s of bgShapes) {
+    const x = s.x - cameraX * s.layer;
+    const y = s.y - cameraY * s.layer * 0.35;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(s.rot + time * 0.02 * (s.layer + 0.3));
+    ctx.strokeStyle = s.shade;
+    ctx.fillStyle = 'transparent';
+    ctx.lineWidth = 2;
+    if (s.sides === 0) {
+      ctx.strokeRect(-s.size / 2, -s.size / 2, s.size, s.size);
+    } else if (s.sides === 1) {
+      ctx.beginPath();
+      ctx.arc(0, 0, s.size / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (s.sides === 2) {
+      ctx.beginPath();
+      ctx.moveTo(0, -s.size / 2);
+      ctx.lineTo(s.size / 2, s.size / 2);
+      ctx.lineTo(-s.size / 2, s.size / 2);
+      ctx.closePath();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-s.size / 2, 0);
+      ctx.lineTo(s.size / 2, 0);
+      ctx.moveTo(0, -s.size / 2);
+      ctx.lineTo(0, s.size / 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawTerrain() {
+  const left = cameraX - 260;
+  const right = cameraX + W + 260;
+  const surface = terrainPoints(left, right, TERRAIN_STEP);
+
+  ctx.save();
+
+  for (const pool of terrainPools) {
+    if (pool.x > right || pool.x + pool.w < left) continue;
+    drawTerrainPool(pool, left, right);
+  }
+
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < surface.length; i++) {
+    const p = surface[i];
+    if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+    else ctx.lineTo(sx(p.x), sy(p.y));
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawTerrainPool(pool, left, right) {
+  const isLava = pool.type === 'lava';
+  const fill = isLava ? LAVA : WATER;
+  const line = isLava ? LAVA_LINE : WATER_LINE;
+  const bodies = terrainPoolPolygons(pool, left, right);
+
+  ctx.save();
+  for (const body of bodies) {
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.78;
+    ctx.beginPath();
+    for (let i = 0; i < body.points.length; i++) {
+      const p = body.points[i];
+      if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+      else ctx.lineTo(sx(p.x), sy(p.y));
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < body.surface.length; i++) {
+      const p = body.surface[i];
+      if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+      else ctx.lineTo(sx(p.x), sy(p.y));
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAnchors() {
+  for (const a of anchors) {
+    const x = sx(a.x);
+    if (x < -50 || x > W + 80) continue;
+    const isFocus = a === focusedAnchor;
+    const isLocked = a === lockedAnchor;
+    ctx.save();
+    ctx.translate(x, sy(a.y));
+    ctx.lineWidth = isLocked ? 5 : 2;
+    ctx.strokeStyle = (isLocked || isFocus) ? ROPE : INK;
+    ctx.fillStyle = PAPER;
+    ctx.beginPath();
+    ctx.arc(0, 0, isLocked ? 15 : 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-15, -15);
+    ctx.lineTo(15, 15);
+    ctx.moveTo(15, -15);
+    ctx.lineTo(-15, 15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (!player.attached && focusedAnchor && !ropeShot) {
+    const hookHand = hookHandPosition();
+    const d = hypot(focusedAnchor.x - player.x, focusedAnchor.y - player.y);
+    ctx.save();
+    ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+    ctx.globalAlpha = d <= HOOK_RANGE ? 0.85 : 0.35;
+    const isLockedTarget = focusedAnchor === lockedAnchor;
+    ctx.lineWidth = isLockedTarget ? 3 : 2;
+    ctx.setLineDash(d <= HOOK_RANGE ? [9, 7] : [4, 10]);
+    ctx.beginPath();
+    ctx.moveTo(sx(hookHand.x), sy(hookHand.y));
+    ctx.lineTo(sx(focusedAnchor.x), sy(focusedAnchor.y));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (isLockedTarget) {
+      ctx.fillStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+      ctx.beginPath();
+      ctx.arc(sx(focusedAnchor.x), sy(focusedAnchor.y), 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawObstacles() {
+  for (const o of obstacles) {
+    if (o.type === 'gate') drawGate(o);
+    else if (o.type === 'saw') drawSaw(o);
+    else if (o.type === 'spikes') drawSpikes(o);
+  }
+}
+
+function drawGate(o) {
+  const x = sx(o.x);
+  const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
+  const gap = o.gap * (0.75 + open * 0.40);
+  const top = o.gapY - gap / 2;
+  const bottom = o.gapY + gap / 2;
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = PAPER;
+  drawBar(x, -GATE_EXTENT, o.w, top + GATE_EXTENT);
+  drawBar(x, bottom, o.w, GATE_EXTENT);
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 14, sy(top));
+  ctx.lineTo(x + o.w + 14, sy(top));
+  ctx.moveTo(x - 14, sy(bottom));
+  ctx.lineTo(x + o.w + 14, sy(bottom));
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBar(x, y, w, h) {
+  if (h <= 0) return;
+  ctx.fillRect(x, sy(y), w, h);
+  ctx.strokeRect(x, sy(y), w, h);
+  for (let yy = y + 14; yy < y + h; yy += 22) {
+    ctx.beginPath();
+    ctx.moveTo(x, sy(yy));
+    ctx.lineTo(x + w, sy(yy - 12));
+    ctx.stroke();
+  }
+}
+
+function drawSaw(o) {
+  const x = sx(o.x);
+  const y = sy(o.y + Math.sin(time * 1.8 + o.phase) * o.bob);
+  const rot = time * 8 * o.spin;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.fillStyle = SAW;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const teeth = 14;
+  for (let i = 0; i < teeth * 2; i++) {
+    const a = i / (teeth * 2) * Math.PI * 2;
+    const r = i % 2 === 0 ? o.r : o.r * 0.72;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, o.r * 0.28, 0, Math.PI * 2);
+  ctx.fillStyle = PAPER;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSpikes(o) {
+  ctx.save();
+  ctx.fillStyle = SPIKE;
+  ctx.strokeStyle = SPIKE;
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < o.count; i++) {
+    const tri = spikePolygon(o, i);
+    ctx.beginPath();
+    ctx.moveTo(sx(tri[0].x), sy(tri[0].y));
+    ctx.lineTo(sx(tri[1].x), sy(tri[1].y));
+    ctx.lineTo(sx(tri[2].x), sy(tri[2].y));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}

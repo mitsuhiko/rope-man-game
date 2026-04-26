@@ -671,6 +671,12 @@
     </section>
   </main>
 
+  <!-- Classic scripts share the game scope; keep state first and bootstrap last. -->
+  <script src="src/state.js"></script>
+  <script src="src/audio.js"></script>
+  <script src="src/ui.js"></script>
+  <script src="src/world.js"></script>
+  <script src="src/character.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
