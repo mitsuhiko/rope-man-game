@@ -9,12 +9,12 @@
   const touchActionEl = document.getElementById('touch-action');
   const touchJoystickEl = document.getElementById('touch-joystick');
   const touchStickEl = document.getElementById('touch-stick');
-  const gameOverSound = new Audio('game-over.wav');
-  const hookSound = new Audio('hook-swoosh.wav');
-  const hookReleaseSound = new Audio('hook-release.wav');
-  const gameSounds = [gameOverSound, hookSound, hookReleaseSound];
-  for (const sound of gameSounds) sound.preload = 'auto';
-  gameOverSound.volume = 0.72;
+  const AUDIO_FILES = {
+    gameOver: { url: 'game-over.wav', volume: 0.72 },
+    hook: { url: 'hook-swoosh.wav', volume: 1 },
+    hookRelease: { url: 'hook-release.wav', volume: 1 },
+  };
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
   const INK = '#111111';
   const PAPER = '#fffdf7';
@@ -107,6 +107,10 @@
   let cameraVY = 0;
   let gameOver = false;
   let gameAudioPrimed = false;
+  let audioContext = null;
+  let audioLoadStarted = false;
+  let currentGameOverSource = null;
+  const audioBuffers = {};
   let furthestX = 0;
   let scoreStartX = 0;
   const DEBUG_HITBOXES = initialSearchParams.get('debug') === '1';
@@ -355,77 +359,117 @@
     setJoystickVisual(ux * visualDistance, uy * visualDistance);
   }
 
+  function createAudioContext() {
+    if (audioContext || !AudioContextCtor) return audioContext;
+    try {
+      audioContext = new AudioContextCtor();
+    } catch (_) {
+      audioContext = null;
+    }
+    return audioContext;
+  }
+
+  function decodeAudioBuffer(context, data) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const succeed = (buffer) => {
+        if (settled) return;
+        settled = true;
+        resolve(buffer);
+      };
+      const fail = (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      };
+      const promise = context.decodeAudioData(data, succeed, fail);
+      if (promise && promise.then) promise.then(succeed, fail);
+    });
+  }
+
+  function startGameAudioLoad() {
+    const context = createAudioContext();
+    if (!context || audioLoadStarted) return context;
+    audioLoadStarted = true;
+
+    for (const [name, config] of Object.entries(AUDIO_FILES)) {
+      fetch(config.url)
+        .then(response => {
+          if (!response.ok) throw new Error(`failed to load ${config.url}`);
+          return response.arrayBuffer();
+        })
+        .then(data => decodeAudioBuffer(context, data))
+        .then(buffer => {
+          audioBuffers[name] = buffer;
+        })
+        .catch(() => {
+          // SFX are optional; never let audio loading affect gameplay.
+        });
+    }
+    return context;
+  }
+
   function primeGameAudio() {
     if (gameAudioPrimed) return;
+    const context = startGameAudioLoad();
+    if (!context) return;
     gameAudioPrimed = true;
-    const previousMuted = gameSounds.map(sound => sound.muted);
-    const restoreOne = (sound, index) => {
-      sound.pause();
-      try {
-        sound.currentTime = 0;
-      } catch (_) {
-        // Ignore seek failures before the audio element is ready.
-      }
-      sound.muted = previousMuted[index];
-    };
-
-    for (const [index, sound] of gameSounds.entries()) {
-      sound.muted = true;
-      const promise = sound.play();
-      if (promise && promise.then) {
-        promise.then(() => restoreOne(sound, index)).catch(() => {
-          sound.muted = previousMuted[index];
+    if (context.state === 'suspended') {
+      const promise = context.resume();
+      if (promise && promise.catch) {
+        promise.catch(() => {
           gameAudioPrimed = false;
         });
-      } else {
-        restoreOne(sound, index);
       }
     }
+  }
+
+  function playBufferedSound(name) {
+    const context = startGameAudioLoad();
+    const buffer = audioBuffers[name];
+    if (!context || !buffer) return null;
+
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = AUDIO_FILES[name].volume;
+    source.connect(gain);
+    gain.connect(context.destination);
+    try {
+      source.start(0);
+    } catch (_) {
+      return null;
+    }
+    return source;
   }
 
   function playHookSound() {
-    hookSound.muted = false;
-    hookSound.pause();
-    try {
-      hookSound.currentTime = 0;
-    } catch (_) {
-      // Some mobile browsers only allow seeking after metadata has loaded.
-    }
-    const promise = hookSound.play();
-    if (promise && promise.catch) promise.catch(() => {});
+    playBufferedSound('hook');
   }
 
   function playHookReleaseSound() {
-    hookReleaseSound.muted = false;
-    hookReleaseSound.pause();
-    try {
-      hookReleaseSound.currentTime = 0;
-    } catch (_) {
-      // Some mobile browsers only allow seeking after metadata has loaded.
-    }
-    const promise = hookReleaseSound.play();
-    if (promise && promise.catch) promise.catch(() => {});
+    playBufferedSound('hookRelease');
   }
 
   function playGameOverSound() {
-    gameOverSound.muted = false;
-    gameOverSound.pause();
-    try {
-      gameOverSound.currentTime = 0;
-    } catch (_) {
-      // Some mobile browsers only allow seeking after metadata has loaded.
+    stopGameOverSound();
+    const source = playBufferedSound('gameOver');
+    currentGameOverSource = source;
+    if (source) {
+      source.onended = () => {
+        if (currentGameOverSource === source) currentGameOverSource = null;
+      };
     }
-    const promise = gameOverSound.play();
-    if (promise && promise.catch) promise.catch(() => {});
   }
 
   function stopGameOverSound() {
-    gameOverSound.pause();
+    if (!currentGameOverSource) return;
     try {
-      gameOverSound.currentTime = 0;
+      currentGameOverSource.stop();
     } catch (_) {
-      // Ignore seek failures before the audio element is ready.
+      // Ignore already-stopped sources.
     }
+    currentGameOverSource = null;
   }
 
   function setupMobileZoomGuard() {
@@ -2031,6 +2075,7 @@
     requestAnimationFrame(frame);
   }
 
+  startGameAudioLoad();
   setupMobileZoomGuard();
   setupTouchControls();
   resize();
