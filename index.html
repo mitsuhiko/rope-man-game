@@ -97,7 +97,7 @@
       position: absolute;
       inset: 0;
       box-sizing: border-box;
-      touch-action: none;
+      touch-action: pan-y;
       align-items: center;
       justify-content: center;
       padding: calc(env(safe-area-inset-top, 0px) + 24px) calc(env(safe-area-inset-right, 0px) + 24px) calc(env(safe-area-inset-bottom, 0px) + 24px) calc(env(safe-area-inset-left, 0px) + 24px);
@@ -408,7 +408,7 @@
       font-weight: 900;
       letter-spacing: -0.03em;
       text-transform: lowercase;
-      touch-action: none;
+      touch-action: pan-y;
       -webkit-tap-highlight-color: transparent;
       cursor: pointer;
     }
@@ -768,6 +768,7 @@
       .start-screen {
         align-items: flex-start;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         padding: calc(env(safe-area-inset-top, 0px) + 14px) calc(env(safe-area-inset-right, 0px) + 14px) calc(env(safe-area-inset-bottom, 0px) + 14px) calc(env(safe-area-inset-left, 0px) + 14px);
       }
       .start-panel {

@@ -136,7 +136,11 @@ function makeHatChoice(hatId) {
 
   button.append(preview, label);
   button.setAttribute('aria-label', hatLabel(hatId));
-  bindStartButton(button, () => selectHat(hatId));
+  button.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectHat(hatId);
+  });
   return button;
 }
 
