@@ -50,6 +50,7 @@ const CHARACTER_HATS = {
   'spiky-hair': { src: 'hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 12, side: 1 },
   sunglasses: { src: 'hats/sunglasses.png', label: 'sunglasses', width: 41, height: 14, up: 0, side: 1 },
   'swoop-hair': { src: 'hats/swoop-hair.png', label: 'swoop hair', width: 48, height: 34, up: 11, side: -2 },
+  teeth: { src: 'hats/teeth.png', label: 'teeth', width: 40, height: 54, up: 4, side: 0 },
   'top-hat': { src: 'hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 20, side: 0 },
   'tv-head': { src: 'hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
   'viking-beard': { src: 'hats/viking-beard.png', label: 'viking beard', width: 35, height: 49, up: -8, side: 0 },

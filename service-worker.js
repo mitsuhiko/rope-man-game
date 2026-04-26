@@ -66,6 +66,7 @@ const CORE_ASSETS = [
   "hats/spiky-hair.png",
   "hats/sunglasses.png",
   "hats/swoop-hair.png",
+  "hats/teeth.png",
   "hats/top-hat.png",
   "hats/tv-head.png",
   "hats/viking-beard.png",
