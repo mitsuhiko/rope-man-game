@@ -14,12 +14,6 @@ definitely the one.
   </a>
 </p>
 
-<p align="center">
-  <video src="./replay-demo.mp4" controls muted playsinline width="720" aria-label="Rope Man replay feature demo">
-    <a href="./replay-demo.mp4">Watch the replay feature demo</a>
-  </video>
-</p>
-
 ## About
 
 Rope Man was built as a little game-jam project with my kids with
