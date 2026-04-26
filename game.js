@@ -9,7 +9,9 @@
   const touchJoystickEl = document.getElementById('touch-joystick');
   const touchStickEl = document.getElementById('touch-stick');
   const gameOverSound = new Audio('game-over.wav');
-  gameOverSound.preload = 'auto';
+  const hookSound = new Audio('hook-swoosh.wav');
+  const gameSounds = [gameOverSound, hookSound];
+  for (const sound of gameSounds) sound.preload = 'auto';
 
   const INK = '#111111';
   const PAPER = '#fffdf7';
@@ -282,26 +284,41 @@
   function primeGameAudio() {
     if (gameAudioPrimed) return;
     gameAudioPrimed = true;
-    const wasMuted = gameOverSound.muted;
-    gameOverSound.muted = true;
-    const restore = () => {
-      gameOverSound.pause();
+    const previousMuted = gameSounds.map(sound => sound.muted);
+    const restoreOne = (sound, index) => {
+      sound.pause();
       try {
-        gameOverSound.currentTime = 0;
+        sound.currentTime = 0;
       } catch (_) {
         // Ignore seek failures before the audio element is ready.
       }
-      gameOverSound.muted = wasMuted;
+      sound.muted = previousMuted[index];
     };
-    const promise = gameOverSound.play();
-    if (promise && promise.then) {
-      promise.then(restore).catch(() => {
-        gameOverSound.muted = wasMuted;
-        gameAudioPrimed = false;
-      });
-    } else {
-      restore();
+
+    for (const [index, sound] of gameSounds.entries()) {
+      sound.muted = true;
+      const promise = sound.play();
+      if (promise && promise.then) {
+        promise.then(() => restoreOne(sound, index)).catch(() => {
+          sound.muted = previousMuted[index];
+          gameAudioPrimed = false;
+        });
+      } else {
+        restoreOne(sound, index);
+      }
     }
+  }
+
+  function playHookSound() {
+    hookSound.muted = false;
+    hookSound.pause();
+    try {
+      hookSound.currentTime = 0;
+    } catch (_) {
+      // Some mobile browsers only allow seeking after metadata has loaded.
+    }
+    const promise = hookSound.play();
+    if (promise && promise.catch) promise.catch(() => {});
   }
 
   function playGameOverSound() {
@@ -621,6 +638,7 @@
           t: 0,
           duration: clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION),
         };
+        playHookSound();
       }
     }
   }
