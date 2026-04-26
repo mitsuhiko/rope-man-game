@@ -12,6 +12,7 @@ function reset(options = {}) {
   time = 0;
   gameOver = false;
   gamePaused = false;
+  resetCrashPlayerFade();
   setCrashActionsVisible(false);
   stopGameOverSound();
   furthestX = 0;
@@ -76,6 +77,8 @@ function reset(options = {}) {
 }
 
 const REPLAY_END_HOLD = 0.65;
+const CRASH_PLAYER_FADE_MS = 450;
+let crashPlayerFadeStartedAt = 0;
 
 // Keep all crash replays for the current seed.  Besides the input stream, we
 // capture the render state for each frame so replay playback can draw every
@@ -352,6 +355,7 @@ function finishCrashReplay() {
   keys.down = false;
   resetJoystickInput();
   stopGameOverSound();
+  beginCrashPlayerFade(true);
   restoreCrashSummaryFromReplay(replay);
   updateCrashSummary();
   setCrashActionsVisible(true);
@@ -793,6 +797,7 @@ function die() {
   runFinalScore = refreshScoreAndRecords();
   if (!replayMode) finalizeReplayRecording();
   gameOver = true;
+  beginCrashPlayerFade(replayMode);
   if (!replayMode) {
     updateCrashSummary();
     setCrashActionsVisible(true);
@@ -835,7 +840,7 @@ function draw() {
   if (replayMode && activeReplayPlayback) {
     drawReplayGhosts();
   } else {
-    drawRopeAndPlayer();
+    drawGameplayPlayer();
   }
   if (replayMode) drawReplayBadge();
   if (DEBUG_HITBOXES) drawDebugHitboxes();
@@ -847,6 +852,33 @@ function draw() {
 function drawCrashCard() {
   // Crash controls are rendered as DOM so the retry/new-seed buttons are
   // real clickable/focusable controls on both desktop and mobile.
+}
+
+function resetCrashPlayerFade() {
+  crashPlayerFadeStartedAt = 0;
+}
+
+function beginCrashPlayerFade(immediate = false) {
+  crashPlayerFadeStartedAt = performance.now() - (immediate ? CRASH_PLAYER_FADE_MS : 0);
+}
+
+function crashPlayerAlpha() {
+  if (!gameOver || replayMode) return 1;
+  if (!crashPlayerFadeStartedAt) return 0;
+  const age = performance.now() - crashPlayerFadeStartedAt;
+  return clamp(1 - age / CRASH_PLAYER_FADE_MS, 0, 1);
+}
+
+function drawGameplayPlayer() {
+  const alpha = crashPlayerAlpha();
+  if (alpha <= 0.01) return;
+  ctx.save();
+  try {
+    ctx.globalAlpha *= alpha;
+    drawRopeAndPlayer();
+  } finally {
+    ctx.restore();
+  }
 }
 
 function applyReplayRenderState(state) {
