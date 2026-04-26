@@ -36,13 +36,13 @@
     sessionStorage.removeItem(UPDATE_RELOAD_KEY);
   });
 
-  async function unregisterPreviousRootServiceWorker(currentRegistration) {
+  async function unregisterPreviousSrcServiceWorker(currentRegistration) {
     if (!navigator.serviceWorker.getRegistrations || !currentRegistration) return;
     try {
-      const previousRootScope = new URL('../', window.location.href).href;
+      const previousSrcScope = new URL('src/', window.location.href).href;
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map((registration) => {
-        if (registration.scope === previousRootScope && registration.scope !== currentRegistration.scope) {
+        if (registration.scope === previousSrcScope && registration.scope !== currentRegistration.scope) {
           return registration.unregister();
         }
         return undefined;
@@ -56,7 +56,7 @@
     if (!serviceWorkersAvailable()) return null;
     if (!registrationPromise) {
       registrationPromise = navigator.serviceWorker.register(SERVICE_WORKER_URL, { scope: './' }).then(async (registration) => {
-        await unregisterPreviousRootServiceWorker(registration);
+        await unregisterPreviousSrcServiceWorker(registration);
         registration.addEventListener('updatefound', () => {
           const worker = registration.installing;
           if (!worker) return;

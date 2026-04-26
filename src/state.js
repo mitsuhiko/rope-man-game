@@ -42,9 +42,9 @@ const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
 const crashHelpEl = document.getElementById('crash-help');
 const AUDIO_FILES = {
-  gameOver: { url: '../assets/game-over.mp3', volume: 0.72 },
-  hook: { url: '../assets/hook-swoosh.wav', volume: 1 },
-  hookRelease: { url: '../assets/hook-release.wav', volume: 1 },
+  gameOver: { url: 'assets/game-over.mp3', volume: 0.72 },
+  hook: { url: 'assets/hook-swoosh.wav', volume: 1 },
+  hookRelease: { url: 'assets/hook-release.wav', volume: 1 },
 };
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
