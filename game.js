@@ -272,15 +272,24 @@
   }
 
   function setupMobileZoomGuard() {
-    let lastTouchEnd = 0;
-    document.addEventListener('touchend', (e) => {
-      const now = performance.now();
-      if (lastTouchEnd && now - lastTouchEnd < 350) e.preventDefault();
-      lastTouchEnd = now;
-    }, { passive: false });
+    const preventZoom = (e) => {
+      if (e.cancelable) e.preventDefault();
+    };
 
-    for (const eventName of ['gesturestart', 'gesturechange']) {
-      document.addEventListener(eventName, (e) => e.preventDefault(), { passive: false });
+    // Mobile Safari can still smart-zoom on double tap unless the tap's
+    // default action is cancelled. The game uses pointer events for input,
+    // so cancelling touchend here does not block controls.
+    window.addEventListener('touchend', preventZoom, { passive: false, capture: true });
+
+    // Pinch zoom / Safari gesture zoom paths.
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 1) preventZoom(e);
+    }, { passive: false, capture: true });
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 1) preventZoom(e);
+    }, { passive: false, capture: true });
+    for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
+      window.addEventListener(eventName, preventZoom, { passive: false, capture: true });
     }
   }
 

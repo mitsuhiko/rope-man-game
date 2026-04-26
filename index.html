@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Rope Dash Spike</title>
   <style>
     :root {
@@ -22,6 +22,7 @@
       height: 100%;
       overflow: hidden;
       overscroll-behavior: none;
+      touch-action: manipulation;
       touch-action: none;
       -webkit-text-size-adjust: 100%;
       background: var(--paper);
@@ -39,6 +40,7 @@
       height: 100vh;
       overflow: hidden;
       background: var(--paper);
+      touch-action: manipulation;
       touch-action: none;
     }
 
@@ -48,6 +50,7 @@
       height: 100%;
       background: var(--paper);
       cursor: crosshair;
+      touch-action: manipulation;
       touch-action: none;
     }
 
@@ -112,6 +115,7 @@
       background: rgba(255, 253, 247, 0.04);
       color: rgba(0, 0, 0, 0.5);
       pointer-events: auto;
+      touch-action: manipulation;
       touch-action: none;
       -webkit-tap-highlight-color: transparent;
     }
