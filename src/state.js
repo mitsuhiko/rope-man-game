@@ -296,7 +296,7 @@ function setGameSeed(seedValue, options = {}) {
 setGameSeed(gameSeedValue, { writeUrl: hasRequestedSeed });
 if (startSeedInputEl) {
   startSeedInputEl.placeholder = gameSeedText;
-  if (hasRequestedSeed) startSeedInputEl.value = gameSeedText;
+  startSeedInputEl.value = gameSeedText;
 }
 
 const W = 1280;

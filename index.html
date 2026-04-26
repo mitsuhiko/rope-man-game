@@ -38,6 +38,7 @@
       position: relative;
       width: 100vw;
       height: 100vh;
+      height: 100dvh;
       overflow: hidden;
       background: var(--paper);
       touch-action: manipulation;
@@ -458,10 +459,10 @@
 
     .touch-action,
     .touch-joystick {
-      position: absolute;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(18px, 4vw, 34px));
-      width: clamp(112px, 26vw, 168px);
-      height: clamp(112px, 26vw, 168px);
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 44px);
+      width: clamp(112px, 26vmin, 168px);
+      height: clamp(112px, 26vmin, 168px);
       box-sizing: border-box;
       border: 3px solid rgba(0, 0, 0, 0.5);
       border-radius: 50%;
@@ -474,7 +475,7 @@
     }
 
     .touch-action {
-      right: calc(env(safe-area-inset-right, 0px) + clamp(18px, 4vw, 34px));
+      right: calc(env(safe-area-inset-right, 0px) + 24px);
       padding: 0;
       appearance: none;
       -webkit-appearance: none;
@@ -509,7 +510,7 @@
     }
 
     .touch-joystick {
-      left: calc(env(safe-area-inset-left, 0px) + clamp(18px, 4vw, 34px));
+      left: calc(env(safe-area-inset-left, 0px) + 24px);
     }
 
     .touch-joystick::before,
@@ -800,12 +801,12 @@
         <h1 id="start-title" class="start-title">rope man</h1>
         <p class="start-copy">Pick a seed, then fling the stickman as far as you can. Share the seed when you find a weird run.</p>
         <div class="start-menu">
-          <button id="start-random" class="start-button start-button--primary" type="button">random seed</button>
+          <button id="start-random" class="start-button start-button--primary" type="button">start</button>
           <form id="start-seed-form" class="start-seed-form" novalidate>
-            <label class="start-label" for="start-seed-input">specific seed</label>
+            <label class="start-label" for="start-seed-input">map seed</label>
             <div class="start-seed-row">
               <input id="start-seed-input" class="start-seed-input" name="seed" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="6" pattern="[0-9A-Za-z]{1,6}" aria-describedby="start-seed-error" />
-              <button id="start-seed-submit" class="start-button start-seed-submit" type="submit">start seed</button>
+              <button id="start-seed-submit" class="start-button start-seed-submit" type="button">randomize</button>
             </div>
             <p id="start-seed-error" class="start-seed-error" aria-live="polite"></p>
           </form>

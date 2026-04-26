@@ -23,8 +23,11 @@ function startGameWithSeed(seedValue) {
   last = 0;
 }
 
-function startRandomSeed() {
-  startGameWithSeed(randomSeedValue());
+function randomizeStartSeed() {
+  setStartSeedError('');
+  const seedValue = randomSeedValue();
+  setGameSeed(seedValue, { writeUrl: false });
+  if (startSeedInputEl) startSeedInputEl.value = gameSeedText;
 }
 
 function startSpecificSeed() {
@@ -160,8 +163,8 @@ function setupStartControls() {
     startSeedInputEl.placeholder = seedTextFromValue(randomSeedValue());
   }
   setStartScreenVisible(!gameStarted);
-  bindStartButton(startRandomEl, startRandomSeed);
-  bindStartButton(startSeedSubmitEl, startSpecificSeed);
+  bindStartButton(startRandomEl, startSpecificSeed);
+  bindStartButton(startSeedSubmitEl, randomizeStartSeed);
   setupCustomizationControls();
 
   if (startSeedFormEl) {
