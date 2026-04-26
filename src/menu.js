@@ -109,6 +109,34 @@ function selectHat(hatId) {
   syncCustomizationUi();
 }
 
+function bindHatChoiceButton(button, action) {
+  let startX = 0;
+  let startY = 0;
+  let pointerId = null;
+
+  button.addEventListener('pointerdown', (e) => {
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+  });
+  button.addEventListener('pointerup', (e) => {
+    if (pointerId !== e.pointerId) return;
+    pointerId = null;
+    if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) return;
+    e.preventDefault();
+    e.stopPropagation();
+    action();
+  });
+  button.addEventListener('pointercancel', () => {
+    pointerId = null;
+  });
+  button.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.detail === 0) action();
+  });
+}
+
 function makeHatChoice(hatId) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -136,11 +164,7 @@ function makeHatChoice(hatId) {
 
   button.append(preview, label);
   button.setAttribute('aria-label', hatLabel(hatId));
-  button.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    selectHat(hatId);
-  });
+  bindHatChoiceButton(button, () => selectHat(hatId));
   return button;
 }
 
