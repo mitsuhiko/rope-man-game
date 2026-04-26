@@ -5,13 +5,19 @@
   const bestEl = document.getElementById('best');
   const seedEl = document.getElementById('seed');
   const gameShellEl = document.querySelector('.game-shell');
+  const startScreenEl = document.getElementById('start-screen');
+  const startRandomEl = document.getElementById('start-random');
+  const startSeedFormEl = document.getElementById('start-seed-form');
+  const startSeedInputEl = document.getElementById('start-seed-input');
+  const startSeedSubmitEl = document.getElementById('start-seed-submit');
+  const startSeedErrorEl = document.getElementById('start-seed-error');
   const touchControlsEl = document.querySelector('.touch-controls');
   const touchActionEl = document.getElementById('touch-action');
   const touchJoystickEl = document.getElementById('touch-joystick');
   const touchStickEl = document.getElementById('touch-stick');
   const crashActionsEl = document.getElementById('crash-actions');
   const crashRetryEl = document.getElementById('crash-retry');
-  const crashNewSeedEl = document.getElementById('crash-new-seed');
+  const crashMainMenuEl = document.getElementById('crash-main-menu');
   const AUDIO_FILES = {
     gameOver: { url: 'game-over.wav', volume: 0.72 },
     hook: { url: 'hook-swoosh.wav', volume: 1 },
@@ -33,6 +39,8 @@
   const BEST_SCORE_KEY = 'ropeDashBestMetersV2';
   const SEED_PARAM = 'seed';
   const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const MAX_SEED_TEXT_LENGTH = 6;
+  const MAX_SEED_VALUE = 0xffffffff;
   const DEFAULT_RNG_SEED = 0x6d2b79f5;
 
   function normalizeSeedValue(value) {
@@ -40,18 +48,40 @@
     return value || DEFAULT_RNG_SEED;
   }
 
-  function seedValueFromText(text) {
-    if (!text) return null;
-    const trimmed = text.trim();
-    if (!trimmed) return null;
+  function parseSeedText(text) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) {
+      return { value: null, text: '', error: 'enter a seed first' };
+    }
+    if (trimmed.length > MAX_SEED_TEXT_LENGTH) {
+      return { value: null, text: trimmed, error: `use ${MAX_SEED_TEXT_LENGTH} letters/numbers or fewer` };
+    }
 
     let value = 0;
     for (const ch of trimmed) {
       const digit = BASE62_ALPHABET.indexOf(ch);
-      if (digit < 0) return null;
-      value = (Math.imul(value, 62) + digit) >>> 0;
+      if (digit < 0) {
+        return { value: null, text: trimmed, error: 'use only letters and numbers' };
+      }
+      value = value * 62 + digit;
+      if (value > MAX_SEED_VALUE) {
+        return { value: null, text: trimmed, error: 'that seed is too large' };
+      }
     }
-    return normalizeSeedValue(value);
+    if (value === 0) {
+      return { value: null, text: trimmed, error: 'seed cannot be all zeroes' };
+    }
+
+    value = normalizeSeedValue(value);
+    return { value, text: seedTextFromValue(value), error: '' };
+  }
+
+  function seedValueFromText(text) {
+    return parseSeedText(text).value;
+  }
+
+  function validateSeedText(text) {
+    return parseSeedText(text);
   }
 
   function seedTextFromValue(value) {
@@ -88,19 +118,26 @@
 
   const initialSearchParams = new URLSearchParams(window.location.search);
   const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
+  const hasRequestedSeed = requestedSeedValue !== null;
   let gameSeedValue = requestedSeedValue ?? randomSeedValue();
   let gameSeedText = seedTextFromValue(gameSeedValue);
   let rngState = gameSeedValue;
+  let gameStarted = false;
 
-  function setGameSeed(seedValue) {
+  function setGameSeed(seedValue, options = {}) {
+    const { writeUrl = true } = options;
     gameSeedValue = normalizeSeedValue(seedValue);
     gameSeedText = seedTextFromValue(gameSeedValue);
     rngState = gameSeedValue;
-    writeSeedToUrl(gameSeedText);
+    if (writeUrl) writeSeedToUrl(gameSeedText);
     if (seedEl) seedEl.textContent = gameSeedText;
   }
 
-  setGameSeed(gameSeedValue);
+  setGameSeed(gameSeedValue, { writeUrl: hasRequestedSeed });
+  if (startSeedInputEl) {
+    startSeedInputEl.placeholder = gameSeedText;
+    if (hasRequestedSeed) startSeedInputEl.value = gameSeedText;
+  }
 
   const W = 1280;
   const H = 720;
@@ -491,11 +528,32 @@
     const preventZoom = (e) => {
       if (e.cancelable) e.preventDefault();
     };
+    const isTextEntryTarget = (target) => (
+      target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]')
+    );
+    let lastTouchEndAt = 0;
+    let lastTouchEndX = 0;
+    let lastTouchEndY = 0;
 
-    // Mobile Safari can still smart-zoom on double tap unless the tap's
-    // default action is cancelled. The game uses pointer events for input,
-    // so cancelling touchend here does not block controls.
-    window.addEventListener('touchend', preventZoom, { passive: false, capture: true });
+    // Mobile Safari can still smart-zoom on double tap. Most game controls are
+    // handled through pointer events, so cancel their touchend. Text inputs get
+    // the first tap so they can focus, but a quick second tap is still blocked.
+    window.addEventListener('touchend', (e) => {
+      const touch = e.changedTouches && e.changedTouches[0];
+      const now = Date.now();
+      const x = touch ? touch.clientX : 0;
+      const y = touch ? touch.clientY : 0;
+      const isDoubleTap = now - lastTouchEndAt < 520 && Math.hypot(x - lastTouchEndX, y - lastTouchEndY) < 34;
+
+      if (!isTextEntryTarget(e.target) || isDoubleTap) preventZoom(e);
+
+      lastTouchEndAt = now;
+      lastTouchEndX = x;
+      lastTouchEndY = y;
+    }, { passive: false, capture: true });
+    window.addEventListener('dblclick', (e) => {
+      if (!isTextEntryTarget(e.target)) preventZoom(e);
+    }, { passive: false, capture: true });
 
     // Pinch zoom / Safari gesture zoom paths.
     window.addEventListener('touchstart', (e) => {
@@ -506,6 +564,77 @@
     }, { passive: false, capture: true });
     for (const eventName of ['gesturestart', 'gesturechange', 'gestureend']) {
       window.addEventListener(eventName, preventZoom, { passive: false, capture: true });
+    }
+  }
+
+  function setStartSeedError(message) {
+    if (!startSeedErrorEl || !startSeedInputEl) return;
+    startSeedErrorEl.textContent = message || '';
+    startSeedInputEl.classList.toggle('is-invalid', Boolean(message));
+    startSeedInputEl.setAttribute('aria-invalid', message ? 'true' : 'false');
+  }
+
+  function setStartScreenVisible(visible) {
+    if (gameShellEl) gameShellEl.classList.toggle('is-starting', visible);
+    if (startScreenEl) startScreenEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
+  function startGameWithSeed(seedValue) {
+    primeGameAudio();
+    setStartSeedError('');
+    setGameSeed(seedValue);
+    gameStarted = true;
+    setStartScreenVisible(false);
+    reset();
+    last = 0;
+  }
+
+  function startRandomSeed() {
+    startGameWithSeed(randomSeedValue());
+  }
+
+  function startSpecificSeed() {
+    const seedText = startSeedInputEl ? (startSeedInputEl.value.trim() || startSeedInputEl.placeholder) : '';
+    const result = validateSeedText(seedText);
+    if (result.error) {
+      setStartSeedError(result.error);
+      if (startSeedInputEl) startSeedInputEl.focus();
+      return;
+    }
+    if (startSeedInputEl) startSeedInputEl.value = result.text;
+    startGameWithSeed(result.value);
+  }
+
+  function bindStartButton(button, action) {
+    if (!button) return;
+    button.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      action();
+    }, { passive: false });
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.detail === 0) action();
+    });
+  }
+
+  function setupStartControls() {
+    if (startSeedInputEl && !startSeedInputEl.placeholder) {
+      startSeedInputEl.placeholder = seedTextFromValue(randomSeedValue());
+    }
+    setStartScreenVisible(!gameStarted);
+    bindStartButton(startRandomEl, startRandomSeed);
+    bindStartButton(startSeedSubmitEl, startSpecificSeed);
+
+    if (startSeedFormEl) {
+      startSeedFormEl.addEventListener('submit', (e) => {
+        e.preventDefault();
+        startSpecificSeed();
+      });
+    }
+    if (startSeedInputEl) {
+      startSeedInputEl.addEventListener('input', () => setStartSeedError(''));
     }
   }
 
@@ -534,7 +663,7 @@
     };
 
     bind(crashRetryEl, retryCurrentSeed);
-    bind(crashNewSeedEl, tryNewSeed);
+    bind(crashMainMenuEl, returnToMainMenu);
   }
 
   function setupTouchControls() {
@@ -645,9 +774,15 @@
     reset();
   }
 
-  function tryNewSeed() {
-    setGameSeed(randomSeedValue());
-    reset();
+  function returnToMainMenu() {
+    gameStarted = false;
+    gameOver = false;
+    setCrashActionsVisible(false);
+    setStartScreenVisible(true);
+    setStartSeedError('');
+    resetJoystickInput();
+    stopGameOverSound();
+    last = 0;
   }
 
   function seedBackground() {
@@ -822,6 +957,7 @@
   }
 
   function inputAction() {
+    if (!gameStarted) return;
     primeGameAudio();
     if (gameOver) {
       retryCurrentSeed();
@@ -857,13 +993,14 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    if (!gameStarted) return;
     primeGameAudio();
     if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
       e.preventDefault();
       retryCurrentSeed();
-    } else if (gameOver && e.code === 'KeyN') {
+    } else if (gameOver && e.code === 'KeyH') {
       e.preventDefault();
-      tryNewSeed();
+      returnToMainMenu();
     } else if (e.code === 'Space') {
       e.preventDefault();
       inputAction();
@@ -899,6 +1036,7 @@
     }
   });
   window.addEventListener('pointerdown', (e) => {
+    if (!gameStarted) return;
     if (e.target.closest && e.target.closest('.touch-controls')) return;
     e.preventDefault();
     primeGameAudio();
@@ -2145,13 +2283,14 @@
     if (!last) last = ts;
     const dt = Math.min(0.033, (ts - last) / 1000);
     last = ts;
-    update(dt);
+    if (gameStarted) update(dt);
     draw();
     requestAnimationFrame(frame);
   }
 
   startGameAudioLoad();
   setupMobileZoomGuard();
+  setupStartControls();
   setupCrashControls();
   setupTouchControls();
   resize();
