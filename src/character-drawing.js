@@ -8,7 +8,7 @@ const CHARACTER_HATS = {
   'baseball-cap': { src: 'hats/baseball-cap.png', label: 'baseball cap', width: 43, height: 28, up: 19, side: -1 },
   bonnet: { src: 'hats/bonnet.png', label: 'bonnet', width: 42, height: 60, up: 8, side: 0 },
   'bucket-hat': { src: 'hats/bucket-hat.png', label: 'bucket hat', width: 44, height: 30, up: 20, side: 0 },
-  crown: { src: 'hats/crown.png', label: 'crown', width: 40, height: 30, up: 27, side: 0 },
+  crown: { src: 'hats/crown.png', label: 'crown', width: 40, height: 30, up: 18, side: 0 },
   flame: { src: 'hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },
   headset: { src: 'hats/headset.png', label: 'headset', width: 45, height: 43, up: 2, side: 0 },
   helmet: { src: 'hats/helmet.png', label: 'helmet', width: 42, height: 42, up: 14, side: 0 },
