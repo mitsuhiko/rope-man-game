@@ -8,6 +8,8 @@
   const touchActionEl = document.getElementById('touch-action');
   const touchJoystickEl = document.getElementById('touch-joystick');
   const touchStickEl = document.getElementById('touch-stick');
+  const gameOverSound = new Audio('game-over.wav');
+  gameOverSound.preload = 'auto';
 
   const INK = '#111111';
   const PAPER = '#fffdf7';
@@ -37,6 +39,7 @@
   let cameraVX = 0;
   let cameraVY = 0;
   let gameOver = false;
+  let gameAudioPrimed = false;
   let furthestX = 0;
   let scoreStartX = 0;
   const DEBUG_HITBOXES = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -276,6 +279,52 @@
     setJoystickVisual(ux * visualDistance, uy * visualDistance);
   }
 
+  function primeGameAudio() {
+    if (gameAudioPrimed) return;
+    gameAudioPrimed = true;
+    const wasMuted = gameOverSound.muted;
+    gameOverSound.muted = true;
+    const restore = () => {
+      gameOverSound.pause();
+      try {
+        gameOverSound.currentTime = 0;
+      } catch (_) {
+        // Ignore seek failures before the audio element is ready.
+      }
+      gameOverSound.muted = wasMuted;
+    };
+    const promise = gameOverSound.play();
+    if (promise && promise.then) {
+      promise.then(restore).catch(() => {
+        gameOverSound.muted = wasMuted;
+        gameAudioPrimed = false;
+      });
+    } else {
+      restore();
+    }
+  }
+
+  function playGameOverSound() {
+    gameOverSound.muted = false;
+    gameOverSound.pause();
+    try {
+      gameOverSound.currentTime = 0;
+    } catch (_) {
+      // Some mobile browsers only allow seeking after metadata has loaded.
+    }
+    const promise = gameOverSound.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  }
+
+  function stopGameOverSound() {
+    gameOverSound.pause();
+    try {
+      gameOverSound.currentTime = 0;
+    } catch (_) {
+      // Ignore seek failures before the audio element is ready.
+    }
+  }
+
   function setupMobileZoomGuard() {
     const preventZoom = (e) => {
       if (e.cancelable) e.preventDefault();
@@ -325,6 +374,7 @@
       touchJoystickEl.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        primeGameAudio();
         if (touchInput.joystickPointerId !== null) return;
         touchInput.joystickPointerId = e.pointerId;
         if (touchJoystickEl.setPointerCapture) touchJoystickEl.setPointerCapture(e.pointerId);
@@ -352,6 +402,7 @@
     cameraVY = 0;
     time = 0;
     gameOver = false;
+    stopGameOverSound();
     furthestX = 0;
     scoreStartX = 0;
     anchors = [];
@@ -542,6 +593,7 @@
   }
 
   function inputAction() {
+    primeGameAudio();
     if (gameOver) {
       reset();
       return;
@@ -574,6 +626,7 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    primeGameAudio();
     if (e.code === 'Space') {
       e.preventDefault();
       inputAction();
@@ -611,6 +664,7 @@
   window.addEventListener('pointerdown', (e) => {
     if (e.target.closest && e.target.closest('.touch-controls')) return;
     e.preventDefault();
+    primeGameAudio();
     if (e.pointerType === 'touch' && touchControlsVisible()) return;
     inputAction();
   }, { passive: false });
@@ -798,6 +852,7 @@
 
   function die() {
     gameOver = true;
+    playGameOverSound();
     player.attached = false;
     player.anchor = null;
     lockedAnchor = null;
