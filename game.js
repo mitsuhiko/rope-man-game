@@ -3,12 +3,15 @@
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
-  const stateEl = document.getElementById('state');
   const seedEl = document.getElementById('seed');
+  const gameShellEl = document.querySelector('.game-shell');
   const touchControlsEl = document.querySelector('.touch-controls');
   const touchActionEl = document.getElementById('touch-action');
   const touchJoystickEl = document.getElementById('touch-joystick');
   const touchStickEl = document.getElementById('touch-stick');
+  const crashActionsEl = document.getElementById('crash-actions');
+  const crashRetryEl = document.getElementById('crash-retry');
+  const crashNewSeedEl = document.getElementById('crash-new-seed');
   const AUDIO_FILES = {
     gameOver: { url: 'game-over.wav', volume: 0.72 },
     hook: { url: 'hook-swoosh.wav', volume: 1 },
@@ -85,11 +88,19 @@
 
   const initialSearchParams = new URLSearchParams(window.location.search);
   const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
-  const gameSeedValue = requestedSeedValue ?? randomSeedValue();
-  const gameSeedText = seedTextFromValue(gameSeedValue);
-  writeSeedToUrl(gameSeedText);
-  if (seedEl) seedEl.textContent = gameSeedText;
+  let gameSeedValue = requestedSeedValue ?? randomSeedValue();
+  let gameSeedText = seedTextFromValue(gameSeedValue);
   let rngState = gameSeedValue;
+
+  function setGameSeed(seedValue) {
+    gameSeedValue = normalizeSeedValue(seedValue);
+    gameSeedText = seedTextFromValue(gameSeedValue);
+    rngState = gameSeedValue;
+    writeSeedToUrl(gameSeedText);
+    if (seedEl) seedEl.textContent = gameSeedText;
+  }
+
+  setGameSeed(gameSeedValue);
 
   const W = 1280;
   const H = 720;
@@ -143,6 +154,10 @@
   const WORLD_PX_PER_METER = PLAYER_VISUAL_HEIGHT_PX / PLAYER_HEIGHT_METERS;
   const ANCHOR_TERRAIN_CLEARANCE_METERS = 3.6;
   const ANCHOR_TERRAIN_CLEARANCE = ANCHOR_TERRAIN_CLEARANCE_METERS * WORLD_PX_PER_METER;
+  const ANCHOR_GATE_HORIZONTAL_CLEARANCE = 220;
+  const ANCHOR_GATE_BOTTOM_CLEARANCE = 190;
+  const ANCHOR_LIQUID_HORIZONTAL_CLEARANCE = 160;
+  const ANCHOR_LIQUID_VERTICAL_CLEARANCE = 205;
   const ANCHOR_MIN_Y = -240;
   const ANCHOR_BASE_MIN_Y = -30;
   const ANCHOR_BASE_MAX_Y = 315;
@@ -494,6 +509,34 @@
     }
   }
 
+  function setCrashActionsVisible(visible) {
+    if (gameShellEl) gameShellEl.classList.toggle('is-crashed', visible);
+    if (crashActionsEl) crashActionsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
+  function setupCrashControls() {
+    const bind = (button, action) => {
+      if (!button) return;
+      button.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        primeGameAudio();
+        action();
+      }, { passive: false });
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.detail === 0) {
+          primeGameAudio();
+          action();
+        }
+      });
+    };
+
+    bind(crashRetryEl, retryCurrentSeed);
+    bind(crashNewSeedEl, tryNewSeed);
+  }
+
   function setupTouchControls() {
     if (touchActionEl) {
       touchActionEl.addEventListener('pointerdown', (e) => {
@@ -550,6 +593,7 @@
     cameraVY = 0;
     time = 0;
     gameOver = false;
+    setCrashActionsVisible(false);
     stopGameOverSound();
     furthestX = 0;
     scoreStartX = 0;
@@ -597,6 +641,15 @@
     cameraY = player.y - H * 0.52;
   }
 
+  function retryCurrentSeed() {
+    reset();
+  }
+
+  function tryNewSeed() {
+    setGameSeed(randomSeedValue());
+    reset();
+  }
+
   function seedBackground() {
     for (let i = 0; i < 80; i++) {
       bgShapes.push(makeBgShape(rand(-300, W * 5)));
@@ -622,22 +675,50 @@
   function generateUntil(worldX) {
     generateTerrainUntil(worldX);
 
+    // Obstacles and pools define unsafe hanging zones below anchors, so place
+    // them before anchors.  This lets anchor generation keep a conservative
+    // vertical buffer above lower gate lips and liquid surfaces.
+    while (nextObstacleX < worldX + ANCHOR_GATE_HORIZONTAL_CLEARANCE) {
+      spawnObstacleCluster(nextObstacleX, spawnIndex++);
+      nextObstacleX += rand(650, 980);
+    }
+
     while (nextAnchorX < worldX) {
       const difficulty = clamp(nextAnchorX / 5000, 0, 1);
       const gap = rand(260, 420 + difficulty * 90);
       const wave = Math.sin(nextAnchorX / 680) * 95;
-      const maxAnchorY = terrainYAt(nextAnchorX) - ANCHOR_TERRAIN_CLEARANCE;
+      const maxAnchorY = Math.min(
+        terrainYAt(nextAnchorX) - ANCHOR_TERRAIN_CLEARANCE,
+        anchorHazardMaxY(nextAnchorX),
+      );
       const minAnchorY = ANCHOR_BASE_MIN_Y + wave;
-      const preferredMaxAnchorY = ANCHOR_BASE_MAX_Y + wave + difficulty * 80;
+      const preferredMaxAnchorY = Math.min(ANCHOR_BASE_MAX_Y + wave + difficulty * 80, maxAnchorY);
       const y = clamp(rand(minAnchorY, preferredMaxAnchorY), ANCHOR_MIN_Y, maxAnchorY);
       addAnchor(nextAnchorX, y);
       nextAnchorX += gap;
     }
+  }
 
-    while (nextObstacleX < worldX) {
-      spawnObstacleCluster(nextObstacleX, spawnIndex++);
-      nextObstacleX += rand(650, 980);
+  function anchorHazardMaxY(x) {
+    let maxY = Infinity;
+
+    for (const o of obstacles) {
+      if (o.type !== 'gate') continue;
+      if (x < o.x - ANCHOR_GATE_HORIZONTAL_CLEARANCE || x > o.x + o.w + ANCHOR_GATE_HORIZONTAL_CLEARANCE) continue;
+
+      // Gate gaps animate wider/narrower. The lower bar is most dangerous when
+      // the gap is narrowest, because its top edge is closest to the anchor.
+      const minGap = o.gap * 0.75;
+      const lowerBarTop = o.gapY + minGap / 2;
+      maxY = Math.min(maxY, lowerBarTop - ANCHOR_GATE_BOTTOM_CLEARANCE);
     }
+
+    for (const pool of terrainPools) {
+      if (x < pool.x - ANCHOR_LIQUID_HORIZONTAL_CLEARANCE || x > pool.x + pool.w + ANCHOR_LIQUID_HORIZONTAL_CLEARANCE) continue;
+      maxY = Math.min(maxY, pool.levelY - ANCHOR_LIQUID_VERTICAL_CLEARANCE);
+    }
+
+    return maxY;
   }
 
   function spawnObstacleCluster(x, i) {
@@ -743,7 +824,7 @@
   function inputAction() {
     primeGameAudio();
     if (gameOver) {
-      reset();
+      retryCurrentSeed();
       return;
     }
     if (player.attached) {
@@ -777,7 +858,13 @@
 
   window.addEventListener('keydown', (e) => {
     primeGameAudio();
-    if (e.code === 'Space') {
+    if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
+      e.preventDefault();
+      retryCurrentSeed();
+    } else if (gameOver && e.code === 'KeyN') {
+      e.preventDefault();
+      tryNewSeed();
+    } else if (e.code === 'Space') {
       e.preventDefault();
       inputAction();
     } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
@@ -793,7 +880,7 @@
       e.preventDefault();
       keys.down = true;
     } else if (e.code === 'KeyR') {
-      reset();
+      retryCurrentSeed();
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -897,7 +984,7 @@
     }
     scoreEl.textContent = dist;
     bestEl.textContent = best;
-    stateEl.textContent = gameOver ? 'crashed - press to restart' : (player.attached ? 'attached' : (ropeShot ? 'hooking' : 'flying'));
+
   }
 
   function adjustedRopeLength(oldLength, delta) {
@@ -1002,6 +1089,7 @@
 
   function die() {
     gameOver = true;
+    setCrashActionsVisible(true);
     playGameOverSound();
     player.attached = false;
     player.anchor = null;
@@ -2049,21 +2137,8 @@
   }
 
   function drawCrashCard() {
-    ctx.save();
-    ctx.translate(W / 2, H / 2);
-    ctx.fillStyle = 'rgba(255, 253, 247, 0.94)';
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 3;
-    ctx.fillRect(-190, -72, 380, 144);
-    ctx.strokeRect(-190, -72, 380, 144);
-    ctx.fillStyle = INK;
-    ctx.textAlign = 'center';
-    ctx.font = '900 30px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
-    ctx.fillText('CRASH', 0, -20);
-    ctx.font = '14px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
-    ctx.fillText('press space / click / tap to restart', 0, 18);
-    ctx.fillText('timing hint: release low, hook high', 0, 44);
-    ctx.restore();
+    // Crash controls are rendered as DOM so the retry/new-seed buttons are
+    // real clickable/focusable controls on both desktop and mobile.
   }
 
   function frame(ts) {
@@ -2077,6 +2152,7 @@
 
   startGameAudioLoad();
   setupMobileZoomGuard();
+  setupCrashControls();
   setupTouchControls();
   resize();
   reset();
