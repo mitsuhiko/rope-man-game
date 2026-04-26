@@ -39,6 +39,7 @@ and see how many meters you can survive.
 | Hook / release rope | `Space` or click / tap the game |
 | Swing left / right | `A` / `D` or `←` / `→` |
 | Reel rope in / out | `W` / `S` or `↑` / `↓` |
+| Cycle zoom level (saved between sessions) | `+` or `=` |
 | Retry current seed | `R` |
 | Watch crash replays for this seed | `P` on the crash screen |
 | Pause / leave replay | `Esc` |

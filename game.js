@@ -61,8 +61,8 @@ function reset(options = {}) {
   furthestX = player.x;
   hookArm.x = player.x;
   hookArm.y = player.y;
-  cameraX = player.x - W * 0.42;
-  cameraY = player.y - H * 0.52;
+  cameraX = player.x - cameraViewW() * 0.42;
+  cameraY = player.y - cameraViewH() * 0.52;
   if (countAttempt) {
     beginSeedAttempt();
   } else {
@@ -179,6 +179,7 @@ function captureReplayState() {
     time,
     cameraX,
     cameraY,
+    cameraZoom,
     scoreMeters,
     furthestX,
     player: cloneReplayPlayer(),
@@ -337,7 +338,7 @@ function startCrashReplay() {
     leaderIndex,
     cursors: new Array(replays.length).fill(-1),
   };
-  generateUntil(maxX + W * 2.8);
+  generateUntil(maxX + cameraViewW() * 2.8);
   updateReplayPlayback(0);
   last = 0;
 }
@@ -397,14 +398,23 @@ function updateReplayPlayback(realDt) {
 
   if (leader) {
     const leaderPlayer = leader.player || leader;
+    const nextPlayerX = Number.isFinite(leaderPlayer.x) ? leaderPlayer.x : player.x;
+    const nextPlayerY = Number.isFinite(leaderPlayer.y) ? leaderPlayer.y : player.y;
+    const recordedZoom = Number.isFinite(leader.cameraZoom) && leader.cameraZoom > 0 ? leader.cameraZoom : 1;
     time = Number.isFinite(leader.time) ? leader.time : playback.elapsed;
-    cameraX = Number.isFinite(leader.cameraX) ? leader.cameraX : cameraX;
-    cameraY = Number.isFinite(leader.cameraY) ? leader.cameraY : cameraY;
-    player.x = Number.isFinite(leaderPlayer.x) ? leaderPlayer.x : player.x;
-    player.y = Number.isFinite(leaderPlayer.y) ? leaderPlayer.y : player.y;
+    if (Number.isFinite(leader.cameraX)) {
+      const recordedScreenX = (nextPlayerX - leader.cameraX) * recordedZoom;
+      cameraX = nextPlayerX - recordedScreenX / cameraZoom;
+    }
+    if (Number.isFinite(leader.cameraY)) {
+      const recordedScreenY = (nextPlayerY - leader.cameraY) * recordedZoom;
+      cameraY = nextPlayerY - recordedScreenY / cameraZoom;
+    }
+    player.x = nextPlayerX;
+    player.y = nextPlayerY;
     scoreMeters = Math.max(0, Math.floor(Number(leader.scoreMeters) || 0));
     furthestX = Math.max(furthestX, Number(leader.furthestX) || player.x, player.x);
-    generateUntil(Math.max(cameraX + W * 2.8, player.x + W * 2.8));
+    generateUntil(Math.max(cameraX + cameraViewW() * 2.8, player.x + cameraViewW() * 2.8));
     updateScoreHud();
   }
 
@@ -542,6 +552,10 @@ function inputAction(options = {}) {
   }
 }
 
+function isCameraZoomKey(e) {
+  return e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
+}
+
 window.addEventListener('keydown', (e) => {
   if (!gameStarted) return;
   if (replayMode) {
@@ -552,6 +566,11 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     e.preventDefault();
     if (!gameOver) togglePause();
+    return;
+  }
+  if (isCameraZoomKey(e)) {
+    e.preventDefault();
+    if (!e.repeat) cycleCameraZoom();
     return;
   }
   primeGameAudio();
@@ -622,7 +641,9 @@ window.addEventListener('pointerdown', (e) => {
 
 function update(dt) {
   time += dt;
-  generateUntil(Math.max(cameraX + W * 2.8, player.x + W * 2.8));
+  const viewW = cameraViewW();
+  const viewH = cameraViewH();
+  generateUntil(Math.max(cameraX + viewW * 2.8, player.x + viewW * 2.8));
   updateFocus();
 
   if (!gameOver) {
@@ -661,8 +682,8 @@ function update(dt) {
 
     player.runPhase += dt * clamp(hypot(player.vx, player.vy) / 80, 3, 18);
 
-    const targetCameraX = player.x + clamp(player.vx * 0.18, -300, 420) - W * 0.44;
-    const targetCameraY = player.y + clamp(player.vy * 0.10, -220, 220) - H * 0.52;
+    const targetCameraX = player.x + clamp(player.vx * 0.18, -300, 420) - viewW * 0.44;
+    const targetCameraY = player.y + clamp(player.vy * 0.10, -220, 220) - viewH * 0.52;
     const stiffness = 44;
     const damping = 13;
     cameraVX += (targetCameraX - cameraX) * stiffness * dt;
@@ -686,7 +707,7 @@ function update(dt) {
   for (const s of bgShapes) {
     const sx = s.x - cameraX * s.layer;
     if (sx < -180) {
-      Object.assign(s, makeBgShape(cameraX * s.layer + W + backgroundRand(100, 900)));
+      Object.assign(s, makeBgShape(cameraX * s.layer + viewW + backgroundRand(100, 900)));
     }
   }
 
@@ -825,6 +846,14 @@ function isUnrecoverablyLost() {
 function sx(x) { return x - cameraX; }
 function sy(y) { return y - cameraY; }
 
+function setViewportTransform() {
+  ctx.setTransform(DPR * viewportScale, 0, 0, DPR * viewportScale, DPR * viewportX, DPR * viewportY);
+}
+
+function setWorldTransform() {
+  ctx.setTransform(DPR * viewportScale * cameraZoom, 0, 0, DPR * viewportScale * cameraZoom, DPR * viewportX, DPR * viewportY);
+}
+
 function draw() {
   if (gameShellEl) gameShellEl.classList.toggle('is-replaying', replayMode);
 
@@ -833,10 +862,11 @@ function draw() {
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, screenW, screenH);
 
-  ctx.setTransform(DPR * viewportScale, 0, 0, DPR * viewportScale, DPR * viewportX, DPR * viewportY);
+  setViewportTransform();
   ctx.fillStyle = PAPER;
   ctx.fillRect(0, 0, W, H);
 
+  setWorldTransform();
   drawBackground();
   drawTerrain();
   drawObstacles();
@@ -846,9 +876,10 @@ function draw() {
   } else {
     drawGameplayPlayer();
   }
-  if (replayMode) drawReplayBadge();
   if (DEBUG_HITBOXES) drawDebugHitboxes();
 
+  setViewportTransform();
+  if (replayMode) drawReplayBadge();
   if (gameOver || gamePaused) drawCrashCard();
 }
 

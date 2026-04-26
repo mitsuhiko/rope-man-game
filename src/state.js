@@ -99,6 +99,7 @@ const SEED_STATS_KEY = 'ropeManSeedStatsV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
 const COLOR_THEME_KEY = 'ropeManColorThemeV1';
+const CAMERA_ZOOM_LEVEL_KEY = 'ropeManCameraZoomLevelV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MAX_SEED_TEXT_LENGTH = 6;
@@ -424,7 +425,53 @@ if (startSeedInputEl) {
 
 const W = 1280;
 const H = 720;
+const CAMERA_ZOOM_LEVELS = [1, 0.75, 0.55];
+let cameraZoomLevel = normalizeCameraZoomLevel(readStorageNumber(CAMERA_ZOOM_LEVEL_KEY));
+let cameraZoom = CAMERA_ZOOM_LEVELS[cameraZoomLevel];
 const BACKGROUND_SHAPE_COUNT = 80;
+
+function normalizeCameraZoomLevel(level) {
+  const count = CAMERA_ZOOM_LEVELS.length;
+  const value = Number(level);
+  const index = Number.isFinite(value) ? Math.floor(value) : 0;
+  return ((index % count) + count) % count;
+}
+
+function cameraViewW() {
+  return W / cameraZoom;
+}
+
+function cameraViewH() {
+  return H / cameraZoom;
+}
+
+function setCameraZoomLevel(level) {
+  const nextLevel = normalizeCameraZoomLevel(level);
+  const nextZoom = CAMERA_ZOOM_LEVELS[nextLevel] || 1;
+  if (nextLevel === cameraZoomLevel && nextZoom === cameraZoom) return;
+
+  const previousZoom = cameraZoom;
+  cameraZoomLevel = nextLevel;
+  cameraZoom = nextZoom;
+  writeStorageNumber(CAMERA_ZOOM_LEVEL_KEY, cameraZoomLevel);
+
+  if (gameStarted) {
+    const playerScreenX = (player.x - cameraX) * previousZoom;
+    const playerScreenY = (player.y - cameraY) * previousZoom;
+    cameraX = player.x - playerScreenX / cameraZoom;
+    cameraY = player.y - playerScreenY / cameraZoom;
+    cameraVX = 0;
+    cameraVY = 0;
+    if (typeof generateUntil === 'function') {
+      generateUntil(Math.max(cameraX + cameraViewW() * 2.8, player.x + cameraViewW() * 2.8));
+    }
+  }
+}
+
+function cycleCameraZoom() {
+  setCameraZoomLevel(cameraZoomLevel + 1);
+}
+
 // Legacy shared-RNG background seeding used one random x plus six cosmetic
 // properties per shape before any terrain/anchor generation happened.
 const BACKGROUND_RANDOMS_PER_SHAPE = 7;

@@ -2,7 +2,7 @@
 
 function seedBackground() {
   for (let i = 0; i < BACKGROUND_SHAPE_COUNT; i++) {
-    bgShapes.push(makeBgShape(backgroundRand(-300, W * 5)));
+    bgShapes.push(makeBgShape(backgroundRand(-300, Math.max(W, cameraViewW()) * 5)));
   }
 }
 
@@ -362,7 +362,7 @@ function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
   return polys;
 }
 
-function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + W + 320) {
+function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + cameraViewW() + 320) {
   const hitboxes = [];
   for (const pool of terrainPools) {
     if (pool.x > right || pool.x + pool.w < left) continue;
@@ -373,9 +373,9 @@ function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + W + 320) 
   return hitboxes;
 }
 
-function terrainSolidHitbox(left = cameraX - 320, right = cameraX + W + 320) {
+function terrainSolidHitbox(left = cameraX - 320, right = cameraX + cameraViewW() + 320) {
   const surface = terrainPoints(left, right, TERRAIN_STEP);
-  const bottom = Math.max(LOST_BELOW_Y + 1000, cameraY + H + 1600);
+  const bottom = Math.max(LOST_BELOW_Y + 1000, cameraY + cameraViewH() + 1600);
   return {
     shape: 'polygon',
     kind: 'terrain',
@@ -551,7 +551,7 @@ function drawDebugHitboxes() {
   ctx.setLineDash([14, 9]);
   ctx.beginPath();
   ctx.moveTo(0, sy(LOST_BELOW_Y));
-  ctx.lineTo(W, sy(LOST_BELOW_Y));
+  ctx.lineTo(cameraViewW(), sy(LOST_BELOW_Y));
   ctx.stroke();
 
   ctx.restore();
@@ -596,7 +596,7 @@ function drawBackground() {
 
 function drawTerrain() {
   const left = cameraX - 260;
-  const right = cameraX + W + 260;
+  const right = cameraX + cameraViewW() + 260;
   const surface = terrainPoints(left, right, TERRAIN_STEP);
 
   ctx.save();
@@ -660,9 +660,10 @@ function drawTerrainPool(pool, left, right) {
 }
 
 function drawAnchors() {
+  const viewW = cameraViewW();
   for (const a of anchors) {
     const x = sx(a.x);
-    if (x < -50 || x > W + 80) continue;
+    if (x < -50 || x > viewW + 80) continue;
     const isFocus = a === focusedAnchor;
     const isLocked = a === lockedAnchor;
     ctx.save();
