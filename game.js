@@ -4,7 +4,7 @@ function reset(options = {}) {
   const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
   const recordRun = options.recordRun ?? (gameStarted && !replayMode);
 
-  rngState = gameSeedValue;
+  resetRandomStreams();
   cameraX = 0;
   cameraY = 0;
   cameraVX = 0;
@@ -24,6 +24,7 @@ function reset(options = {}) {
   resetTerrain();
   nextAnchorX = 120;
   nextObstacleX = 950;
+  generatedWorldX = 0;
   spawnIndex = 0;
   focusedAnchor = null;
   lockedAnchor = null;
@@ -48,7 +49,7 @@ function reset(options = {}) {
   player.runPhase = 0;
 
   seedBackground();
-  generateUntil(W * 2.6);
+  generateUntil(INITIAL_WORLD_GENERATION_X);
   player.anchor = anchors[0];
   player.ropeLength = clamp(INITIAL_SPAWN_ROPE_LENGTH, MIN_ROPE, MAX_ROPE);
   player.angle = INITIAL_SPAWN_ANGLE;
@@ -650,7 +651,7 @@ function update(dt) {
   for (const s of bgShapes) {
     const sx = s.x - cameraX * s.layer;
     if (sx < -180) {
-      Object.assign(s, makeBgShape(cameraX * s.layer + W + rand(100, 900)));
+      Object.assign(s, makeBgShape(cameraX * s.layer + W + backgroundRand(100, 900)));
     }
   }
 

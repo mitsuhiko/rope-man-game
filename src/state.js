@@ -326,6 +326,7 @@ const hasRequestedSeed = requestedSeedValue !== null;
 let gameSeedValue = requestedSeedValue ?? randomSeedValue();
 let gameSeedText = seedTextFromValue(gameSeedValue);
 let rngState = gameSeedValue;
+let backgroundRngState = gameSeedValue;
 let gameStarted = false;
 let scoreMeters = 0;
 let best = loadOverallBestMeters();
@@ -406,6 +407,7 @@ function setGameSeed(seedValue, options = {}) {
   gameSeedValue = normalizeSeedValue(seedValue);
   gameSeedText = seedTextFromValue(gameSeedValue);
   rngState = gameSeedValue;
+  backgroundRngState = gameSeedValue;
   syncCurrentSeedStats();
   if (previousSeedValue !== gameSeedValue && typeof clearReplayHistory === 'function') {
     clearReplayHistory();
@@ -422,6 +424,13 @@ if (startSeedInputEl) {
 
 const W = 1280;
 const H = 720;
+const BACKGROUND_SHAPE_COUNT = 80;
+// Legacy shared-RNG background seeding used one random x plus six cosmetic
+// properties per shape before any terrain/anchor generation happened.
+const BACKGROUND_RANDOMS_PER_SHAPE = 7;
+const LEGACY_INITIAL_BACKGROUND_RANDOM_CALLS = BACKGROUND_SHAPE_COUNT * BACKGROUND_RANDOMS_PER_SHAPE;
+const INITIAL_WORLD_GENERATION_X = W * 2.6;
+const WORLD_GENERATION_CHUNK = 256;
 let screenW = 0;
 let screenH = 0;
 let viewportScale = 1;
@@ -546,6 +555,7 @@ let terrainLastY = 0;
 let nextTerrainPoolX = 0;
 let nextAnchorX = 120;
 let nextObstacleX = 950;
+let generatedWorldX = 0;
 let spawnIndex = 0;
 let focusedAnchor = null;
 let lockedAnchor = null;
@@ -576,15 +586,41 @@ if ('ResizeObserver' in window) {
   new ResizeObserver(resize).observe(canvas);
 }
 
-function random() {
-  let x = rngState;
+function nextRandomState(state) {
+  let x = state;
   x ^= x << 13;
   x ^= x >>> 17;
   x ^= x << 5;
-  rngState = normalizeSeedValue(x);
+  return normalizeSeedValue(x);
+}
+
+function random() {
+  rngState = nextRandomState(rngState);
   return rngState / 0x100000000;
 }
 
+function backgroundRandom() {
+  backgroundRngState = nextRandomState(backgroundRngState);
+  return backgroundRngState / 0x100000000;
+}
+
+function skipWorldRandomCalls(count) {
+  for (let i = 0; i < count; i += 1) {
+    rngState = nextRandomState(rngState);
+  }
+}
+
+function resetRandomStreams() {
+  rngState = gameSeedValue;
+  backgroundRngState = gameSeedValue;
+  // Background seeding used to consume the shared world RNG before terrain,
+  // obstacles, and anchors were generated. Keep that initial offset so the
+  // existing seed maps stay aligned, then keep scrolling background cosmetics
+  // on their own stream so camera/input timing cannot perturb the world map.
+  skipWorldRandomCalls(LEGACY_INITIAL_BACKGROUND_RANDOM_CALLS);
+}
+
 const rand = (a, b) => a + random() * (b - a);
+const backgroundRand = (a, b) => a + backgroundRandom() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hypot = Math.hypot;

@@ -1,20 +1,20 @@
 // Level generation, terrain, obstacles, collisions, and world rendering.
 
 function seedBackground() {
-  for (let i = 0; i < 80; i++) {
-    bgShapes.push(makeBgShape(rand(-300, W * 5)));
+  for (let i = 0; i < BACKGROUND_SHAPE_COUNT; i++) {
+    bgShapes.push(makeBgShape(backgroundRand(-300, W * 5)));
   }
 }
 
 function makeBgShape(x) {
   return {
     x,
-    y: rand(80, Math.max(180, H - 120)),
-    size: rand(18, 86),
-    sides: Math.floor(rand(0, 4)),
-    shadeIndex: random() < 0.5 ? 0 : 1,
-    layer: random() < 0.55 ? 0.28 : 0.48,
-    rot: rand(0, Math.PI),
+    y: backgroundRand(80, Math.max(180, H - 120)),
+    size: backgroundRand(18, 86),
+    sides: Math.floor(backgroundRand(0, 4)),
+    shadeIndex: backgroundRandom() < 0.5 ? 0 : 1,
+    layer: backgroundRandom() < 0.55 ? 0.28 : 0.48,
+    rot: backgroundRand(0, Math.PI),
   };
 }
 
@@ -23,6 +23,21 @@ function addAnchor(x, y) {
 }
 
 function generateUntil(worldX) {
+  const targetX = Math.max(0, Number(worldX) || 0);
+  // Advance in fixed world-space slices, not caller-provided distances.  That
+  // makes generateUntil(a); generateUntil(b) produce the same map as a single
+  // generateUntil(b), which is important when crash replays generate the whole
+  // visible world up front from recorded snapshots.
+  while (generatedWorldX < targetX) {
+    const nextWorldX = generatedWorldX < INITIAL_WORLD_GENERATION_X
+      ? INITIAL_WORLD_GENERATION_X
+      : generatedWorldX + WORLD_GENERATION_CHUNK;
+    generateWorldSlice(nextWorldX);
+    generatedWorldX = nextWorldX;
+  }
+}
+
+function generateWorldSlice(worldX) {
   generateTerrainUntil(worldX);
 
   // Obstacles and pools define unsafe hanging zones below anchors, so place
