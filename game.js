@@ -271,11 +271,40 @@ function restoreCrashSummaryFromReplay(replay) {
   updateScoreHud();
 }
 
+function crashReplayScore(replay) {
+  if (!replay) return 0;
+  const scores = [
+    replay.finalScore,
+    replay.crash && replay.crash.runFinalScore,
+    replay.crash && replay.crash.scoreMeters,
+  ].map(value => Number(value)).filter(Number.isFinite);
+  return Math.max(0, ...scores);
+}
+
+function selectCrashReplayLeaderIndex(replays) {
+  let leaderIndex = 0;
+  let bestScore = -Infinity;
+  let bestMaxX = -Infinity;
+
+  for (let i = 0; i < replays.length; i += 1) {
+    const replay = replays[i];
+    const score = crashReplayScore(replay);
+    const maxX = Number(replay && replay.maxX) || 0;
+    if (score > bestScore || (score === bestScore && maxX >= bestMaxX)) {
+      leaderIndex = i;
+      bestScore = score;
+      bestMaxX = maxX;
+    }
+  }
+
+  return leaderIndex;
+}
+
 function startCrashReplay() {
   const replays = currentSeedReplays();
   if (!canWatchCrashReplay() || !replays.length) return;
 
-  const leaderIndex = replays.length - 1;
+  const leaderIndex = selectCrashReplayLeaderIndex(replays);
   const replayDuration = Number(replays[leaderIndex].duration) || 0;
   let maxX = 0;
   for (const replay of replays) {
@@ -873,8 +902,8 @@ function drawReplayGhosts() {
       const sample = replaySampleAt(playback, i, playback.elapsed);
       if (!sample || !applyReplayRenderState(sample)) continue;
 
-      const isLatest = i === playback.replays.length - 1;
-      const alpha = (sample.replayAlpha ?? 1) * (isLatest ? 0.82 : 0.5);
+      const isLeader = i === playback.leaderIndex;
+      const alpha = (sample.replayAlpha ?? 1) * (isLeader ? 0.82 : 0.5);
       if (alpha <= 0.01) continue;
 
       applyReplayAppearance(replay.characterAppearance);
