@@ -194,7 +194,7 @@ def iter_targets(paths: Iterable[str]) -> list[Path]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="*", default=["hats"], help="PNG files or directories to normalize")
+    parser.add_argument("paths", nargs="*", default=["assets/hats"], help="PNG files or directories to normalize")
     args = parser.parse_args()
 
     for path in iter_targets(args.paths):
