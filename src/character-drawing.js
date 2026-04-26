@@ -1,25 +1,84 @@
 // Stickman drawing and character customization slots.
 
+const CHARACTER_HAT_ORDER = [
+  'backward-cap',
+  'balaclava',
+  'bandana',
+  'baseball-cap-side',
+  'baseball-cap',
+  'bonnet',
+  'bucket-hat',
+  'crown',
+  'flame',
+  'headphones',
+  'headset',
+  'helmet',
+  'ninja-mask',
+  'party-hat',
+  'pirate-hat',
+  'pom-beanie',
+  'samurai-helmet',
+  'silly-face',
+  'skull',
+  'spiky-hair',
+  'sunglasses',
+  'top-hat',
+  'tv-head',
+  'viking-helmet',
+  'wizard-hat',
+];
+
 const CHARACTER_HATS = {
-  'top-hat': { src: 'hats/top-hat.png', width: 42, height: 39, up: 28, side: 0 },
-  crown: { src: 'hats/crown.png', width: 40, height: 30, up: 27, side: 0 },
-  helmet: { src: 'hats/helmet.png', width: 42, height: 42, up: 14, side: 0 },
-  'party-hat': { src: 'hats/party-hat.png', width: 38, height: 52, up: 33, side: 0 },
-  'wizard-hat': { src: 'hats/wizard-hat.png', width: 50, height: 46, up: 33, side: 1 },
+  'backward-cap': { src: 'hats/backward-cap.png', label: 'backward cap', width: 42, height: 32, up: 18, side: -2 },
+  balaclava: { src: 'hats/balaclava.png', label: 'balaclava', width: 38, height: 52, up: 1, side: 0 },
+  bandana: { src: 'hats/bandana.png', label: 'bandana', width: 44, height: 31, up: 16, side: -1 },
+  'baseball-cap-side': { src: 'hats/baseball-cap-side.png', label: 'side cap', width: 48, height: 32, up: 19, side: -3 },
+  'baseball-cap': { src: 'hats/baseball-cap.png', label: 'baseball cap', width: 43, height: 28, up: 19, side: -1 },
+  bonnet: { src: 'hats/bonnet.png', label: 'bonnet', width: 42, height: 50, up: 8, side: 0 },
+  'bucket-hat': { src: 'hats/bucket-hat.png', label: 'bucket hat', width: 44, height: 30, up: 20, side: 0 },
+  crown: { src: 'hats/crown.png', label: 'crown', width: 40, height: 30, up: 27, side: 0 },
+  flame: { src: 'hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },
+  headphones: { src: 'hats/headphones.png', label: 'headphones', width: 42, height: 42, up: 2, side: 0 },
+  headset: { src: 'hats/headset.png', label: 'headset', width: 45, height: 43, up: 2, side: 0 },
+  helmet: { src: 'hats/helmet.png', label: 'helmet', width: 42, height: 42, up: 14, side: 0 },
+  'ninja-mask': { src: 'hats/ninja-mask.png', label: 'ninja mask', width: 43, height: 43, up: 2, side: 0 },
+  'party-hat': { src: 'hats/party-hat.png', label: 'party hat', width: 38, height: 52, up: 33, side: 0 },
+  'pirate-hat': { src: 'hats/pirate-hat.png', label: 'pirate hat', width: 50, height: 40, up: 22, side: 0 },
+  'pom-beanie': { src: 'hats/pom-beanie.png', label: 'pom beanie', width: 38, height: 41, up: 24, side: 0 },
+  'samurai-helmet': { src: 'hats/samurai-helmet.png', label: 'samurai', width: 48, height: 42, up: 18, side: 0 },
+  'silly-face': { src: 'hats/silly-face.png', label: 'silly face', width: 40, height: 42, up: 0, side: 0 },
+  skull: { src: 'hats/skull.png', label: 'skull', width: 37, height: 42, up: 2, side: 0 },
+  'spiky-hair': { src: 'hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 24, side: 0 },
+  sunglasses: { src: 'hats/sunglasses.png', label: 'sunglasses', width: 41, height: 14, up: 0, side: 1 },
+  'top-hat': { src: 'hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 28, side: 0 },
+  'tv-head': { src: 'hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
+  'viking-helmet': { src: 'hats/viking-helmet.png', label: 'viking', width: 48, height: 35, up: 21, side: 0 },
+  'wizard-hat': { src: 'hats/wizard-hat.png', label: 'wizard hat', width: 50, height: 46, up: 33, side: 1 },
 };
 const characterAccessoryImages = {};
 
+function selectedHatId() {
+  return characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat] ? characterAppearance.hat : null;
+}
+
 function setCharacterAppearance(nextAppearance = {}) {
-  Object.assign(characterAppearance, nextAppearance);
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hat')) {
+    characterAppearance.hat = nextAppearance.hat && CHARACTER_HATS[nextAppearance.hat] ? nextAppearance.hat : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'backpack')) {
+    characterAppearance.backpack = Boolean(nextAppearance.backpack);
+  }
+  saveCharacterAppearance();
   preloadCharacterAppearance();
 }
 
 function preloadCharacterAppearance() {
-  const hat = characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat];
-  if (!hat || characterAccessoryImages[characterAppearance.hat]) return;
+  const hatId = selectedHatId();
+  const hat = hatId && CHARACTER_HATS[hatId];
+  if (!hat || characterAccessoryImages[hatId]) return;
   const img = new Image();
   img.src = hat.src;
-  characterAccessoryImages[characterAppearance.hat] = img;
+  characterAccessoryImages[hatId] = img;
 }
 
 function drawOrientedImage(img, center, xAxis, yAxis, width, height) {
@@ -100,7 +159,7 @@ function drawPrimitiveHat(core) {
 }
 
 function drawCharacterHat(core) {
-  const hatId = characterAppearance.hat;
+  const hatId = selectedHatId();
   if (!hatId) return;
   const spec = CHARACTER_HATS[hatId];
   if (!spec) {

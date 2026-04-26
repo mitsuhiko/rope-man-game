@@ -9,11 +9,17 @@ const attemptsEl = document.getElementById('attempts');
 const seedEl = document.getElementById('seed');
 const gameShellEl = document.querySelector('.game-shell');
 const startScreenEl = document.getElementById('start-screen');
+const startMainPanelEl = document.getElementById('start-main-panel');
 const startRandomEl = document.getElementById('start-random');
 const startSeedFormEl = document.getElementById('start-seed-form');
 const startSeedInputEl = document.getElementById('start-seed-input');
 const startSeedSubmitEl = document.getElementById('start-seed-submit');
 const startSeedErrorEl = document.getElementById('start-seed-error');
+const startCustomizeOpenEl = document.getElementById('start-customize-open');
+const startCustomizeCloseEl = document.getElementById('start-customize-close');
+const startCustomizationMenuEl = document.getElementById('start-customization-menu');
+const startHatGridEl = document.getElementById('start-hat-grid');
+const startCharacterSelectionEl = document.getElementById('start-character-selection');
 const touchControlsEl = document.querySelector('.touch-controls');
 const touchActionEl = document.getElementById('touch-action');
 const touchJoystickEl = document.getElementById('touch-joystick');
@@ -44,6 +50,7 @@ const BG2 = '#dddddd';
 const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
 const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 const SEED_STATS_KEY = 'ropeManSeedStatsV1';
+const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MAX_SEED_TEXT_LENGTH = 6;
@@ -179,6 +186,18 @@ function loadSeedStats() {
     };
   }
   return stats;
+}
+
+function loadCharacterAppearance() {
+  const raw = readStorageJson(CHARACTER_APPEARANCE_KEY, {});
+  return {
+    hat: raw && typeof raw.hat === 'string' ? raw.hat : null,
+    backpack: Boolean(raw && raw.backpack),
+  };
+}
+
+function saveCharacterAppearance() {
+  writeStorageJson(CHARACTER_APPEARANCE_KEY, characterAppearance);
 }
 
 const initialSearchParams = new URLSearchParams(window.location.search);
@@ -383,10 +402,7 @@ const hookArm = {
   oy: 0,
 };
 
-const characterAppearance = {
-  hat: null,
-  backpack: false,
-};
+const characterAppearance = loadCharacterAppearance();
 
 let anchors = [];
 let obstacles = [];
