@@ -74,8 +74,115 @@ function reset(options = {}) {
   }
 }
 
-// Replays are input re-simulations: every update stores the elapsed dt,
-// movement axes, and hook/release presses that happened before that update.
+const REPLAY_END_HOLD = 0.65;
+
+// Keep all crash replays for the current seed.  Besides the input stream, we
+// capture the render state for each frame so replay playback can draw every
+// run through the normal rope/player renderer instead of an approximate ghost.
+function clearReplayHistory() {
+  seedCrashReplays = [];
+  lastCrashReplay = null;
+  activeReplayPlayback = null;
+  activeReplayRecording = null;
+  replayInputOverride = null;
+}
+
+function currentSeedReplays() {
+  return seedCrashReplays.filter((replay) => (
+    replay &&
+    replay.seedValue === gameSeedValue &&
+    replay.frames &&
+    replay.frames.length
+  ));
+}
+
+function currentSeedReplayCount() {
+  return currentSeedReplays().length;
+}
+
+function cloneReplayAnchor(anchor) {
+  if (!anchor) return null;
+  return {
+    id: anchor.id || 0,
+    x: Number(anchor.x) || 0,
+    y: Number(anchor.y) || 0,
+    r: Number(anchor.r) || 8,
+  };
+}
+
+function cloneReplayJoints(joints) {
+  const cloned = {};
+  if (!joints || typeof joints !== 'object') return cloned;
+  for (const [name, joint] of Object.entries(joints)) {
+    if (!joint) continue;
+    cloned[name] = {
+      x: Number(joint.x) || 0,
+      y: Number(joint.y) || 0,
+      oldX: Number(joint.oldX) || 0,
+      oldY: Number(joint.oldY) || 0,
+      pinned: Boolean(joint.pinned),
+    };
+  }
+  return cloned;
+}
+
+function cloneReplayPlayer(source = player) {
+  return {
+    x: Number(source.x) || 0,
+    y: Number(source.y) || 0,
+    vx: Number(source.vx) || 0,
+    vy: Number(source.vy) || 0,
+    attached: Boolean(source.attached),
+    anchor: cloneReplayAnchor(source.anchor),
+    ropeLength: Number(source.ropeLength) || 0,
+    angle: Number(source.angle) || 0,
+    angularVelocity: Number(source.angularVelocity) || 0,
+    alive: source.alive !== false,
+    runPhase: Number(source.runPhase) || 0,
+  };
+}
+
+function cloneReplayRagdoll(source = ragdoll) {
+  return {
+    initialized: Boolean(source.initialized),
+    visualSide: Number.isFinite(source.visualSide) ? source.visualSide : 1,
+    joints: cloneReplayJoints(source.joints),
+  };
+}
+
+function cloneReplayHookArm(source = hookArm) {
+  return {
+    initialized: Boolean(source.initialized),
+    x: Number(source.x) || 0,
+    y: Number(source.y) || 0,
+    ox: Number(source.ox) || 0,
+    oy: Number(source.oy) || 0,
+  };
+}
+
+function cloneReplayRopeShot(source = ropeShot) {
+  if (!source) return null;
+  return {
+    anchor: cloneReplayAnchor(source.anchor),
+    t: Number(source.t) || 0,
+    duration: Number(source.duration) || 0,
+  };
+}
+
+function captureReplayState() {
+  return {
+    time,
+    cameraX,
+    cameraY,
+    scoreMeters,
+    furthestX,
+    player: cloneReplayPlayer(),
+    ragdoll: cloneReplayRagdoll(),
+    hookArm: cloneReplayHookArm(),
+    ropeShot: cloneReplayRopeShot(),
+  };
+}
+
 function startReplayRecording() {
   activeReplayRecording = {
     version: REPLAY_FORMAT_VERSION,
@@ -84,6 +191,8 @@ function startReplayRecording() {
     frames: [],
     actionCounts: Object.create(null),
     duration: 0,
+    maxX: player.x,
+    initialState: captureReplayState(),
     characterAppearance: { ...characterAppearance },
   };
 }
@@ -96,18 +205,30 @@ function recordReplayAction() {
 }
 
 function recordReplayFrame(dt) {
-  if (replayMode || gameOver || !activeReplayRecording) return;
+  if (replayMode || gameOver || !activeReplayRecording) return null;
   const frameIndex = activeReplayRecording.frames.length;
   const frameDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
   const actions = activeReplayRecording.actionCounts[frameIndex] || 0;
-  activeReplayRecording.frames.push({
+  const frame = {
+    t: activeReplayRecording.duration + frameDt,
     dt: frameDt,
     x: inputAxisX(),
     y: inputAxisY(),
     a: actions,
-  });
+  };
+  activeReplayRecording.frames.push(frame);
   activeReplayRecording.duration += frameDt;
   delete activeReplayRecording.actionCounts[frameIndex];
+  return frame;
+}
+
+function captureReplayFrameState(frame) {
+  if (!frame) return;
+  const state = captureReplayState();
+  frame.s = state;
+  if (activeReplayRecording) {
+    activeReplayRecording.maxX = Math.max(activeReplayRecording.maxX, state.player.x, furthestX);
+  }
 }
 
 function finalizeReplayRecording() {
@@ -117,6 +238,7 @@ function finalizeReplayRecording() {
   delete replay.actionCounts;
   replay.finalScore = runFinalScore || scoreMeters;
   replay.deathFrame = Math.max(0, replay.frames.length - 1);
+  replay.maxX = Math.max(replay.maxX || 0, furthestX, player.x);
   replay.crash = {
     scoreMeters,
     runFinalScore: runFinalScore || scoreMeters,
@@ -126,18 +248,14 @@ function finalizeReplayRecording() {
     seedValue: gameSeedValue,
     seedText: gameSeedText,
   };
-  lastCrashReplay = replay.frames.length ? replay : null;
+  if (replay.frames.length) {
+    seedCrashReplays.push(replay);
+    lastCrashReplay = replay;
+  }
 }
 
 function canWatchCrashReplay() {
-  return Boolean(
-    gameOver &&
-    !replayMode &&
-    lastCrashReplay &&
-    lastCrashReplay.frames &&
-    lastCrashReplay.frames.length &&
-    lastCrashReplay.seedValue === gameSeedValue
-  );
+  return Boolean(gameOver && !replayMode && currentSeedReplayCount() > 0);
 }
 
 function restoreCrashSummaryFromReplay(replay) {
@@ -153,15 +271,18 @@ function restoreCrashSummaryFromReplay(replay) {
 }
 
 function startCrashReplay() {
-  if (!canWatchCrashReplay()) return;
-  const replay = lastCrashReplay;
+  const replays = currentSeedReplays();
+  if (!canWatchCrashReplay() || !replays.length) return;
+
+  const leaderIndex = replays.length - 1;
+  const replayDuration = Number(replays[leaderIndex].duration) || 0;
+  let maxX = 0;
+  for (const replay of replays) {
+    maxX = Math.max(maxX, Number(replay.maxX) || 0);
+  }
+
   replayMode = true;
-  activeReplayPlayback = {
-    replay,
-    index: 0,
-    realElapsed: 0,
-    simElapsed: 0,
-  };
+  activeReplayPlayback = null;
   replayInputOverride = null;
   activeReplayRecording = null;
   keys.left = false;
@@ -171,14 +292,24 @@ function startCrashReplay() {
   resetJoystickInput();
   stopGameOverSound();
   setCrashActionsVisible(false);
-  setGameSeed(replay.seedValue, { writeUrl: false });
+  setGameSeed(replays[0].seedValue, { writeUrl: false });
   gameStarted = true;
   reset({ countAttempt: false, recordRun: false });
+  activeReplayPlayback = {
+    replays,
+    elapsed: 0,
+    duration: replayDuration,
+    maxX,
+    leaderIndex,
+    cursors: new Array(replays.length).fill(-1),
+  };
+  generateUntil(maxX + W * 2.8);
+  updateReplayPlayback(0);
   last = 0;
 }
 
 function finishCrashReplay() {
-  const replay = activeReplayPlayback ? activeReplayPlayback.replay : lastCrashReplay;
+  const replay = lastCrashReplay;
   activeReplayPlayback = null;
   replayInputOverride = null;
   replayMode = false;
@@ -197,44 +328,52 @@ function finishCrashReplay() {
   last = 0;
 }
 
-function runReplayFrame(frame) {
-  replayInputOverride = {
-    x: Number(frame.x) || 0,
-    y: Number(frame.y) || 0,
-  };
-  const actions = Math.max(0, Math.floor(Number(frame.a) || 0));
-  for (let i = 0; i < actions; i += 1) {
-    inputAction({ record: false, audio: true, retryOnGameOver: false });
+function replaySampleAt(playback, replayIndex, elapsed) {
+  const replay = playback && playback.replays ? playback.replays[replayIndex] : null;
+  if (!replay || !replay.frames || !replay.frames.length) return null;
+  if (elapsed > replay.duration + REPLAY_END_HOLD) return null;
+
+  let cursor = playback.cursors[replayIndex] ?? -1;
+  while (cursor + 1 < replay.frames.length && replay.frames[cursor + 1].t <= elapsed) {
+    cursor += 1;
   }
-  update(Number.isFinite(frame.dt) && frame.dt > 0 ? frame.dt : 0);
-  replayInputOverride = null;
+  while (cursor >= 0 && replay.frames[cursor].t > elapsed) {
+    cursor -= 1;
+  }
+  playback.cursors[replayIndex] = cursor;
+
+  let state = cursor >= 0 ? replay.frames[cursor].s : replay.initialState;
+  for (let i = cursor - 1; !state && i >= 0; i -= 1) {
+    state = replay.frames[i].s;
+  }
+  if (!state) state = replay.initialState;
+  if (!state) return null;
+
+  const endedT = clamp((elapsed - replay.duration) / REPLAY_END_HOLD, 0, 1);
+  return { ...state, replayAlpha: 1 - smoothstep01(endedT) };
 }
 
 function updateReplayPlayback(realDt) {
   const playback = activeReplayPlayback;
-  if (!playback || !playback.replay || !playback.replay.frames) return;
+  if (!playback || !playback.replays || !playback.replays.length) return;
 
-  playback.realElapsed += Number.isFinite(realDt) && realDt > 0 ? realDt : 0;
-  let steps = 0;
-  const maxSteps = 12;
+  playback.elapsed += Number.isFinite(realDt) && realDt > 0 ? realDt : 0;
+  const leader = replaySampleAt(playback, playback.leaderIndex, playback.elapsed);
 
-  while (playback.index < playback.replay.frames.length && steps < maxSteps) {
-    const frame = playback.replay.frames[playback.index];
-    const frameDt = Number.isFinite(frame.dt) && frame.dt > 0 ? frame.dt : 0;
-    if (playback.simElapsed + frameDt > playback.realElapsed && !(steps === 0 && frameDt === 0)) break;
-
-    runReplayFrame(frame);
-    playback.simElapsed += frameDt;
-    playback.index += 1;
-    steps += 1;
-    if (gameOver) break;
+  if (leader) {
+    const leaderPlayer = leader.player || leader;
+    time = Number.isFinite(leader.time) ? leader.time : playback.elapsed;
+    cameraX = Number.isFinite(leader.cameraX) ? leader.cameraX : cameraX;
+    cameraY = Number.isFinite(leader.cameraY) ? leader.cameraY : cameraY;
+    player.x = Number.isFinite(leaderPlayer.x) ? leaderPlayer.x : player.x;
+    player.y = Number.isFinite(leaderPlayer.y) ? leaderPlayer.y : player.y;
+    scoreMeters = Math.max(0, Math.floor(Number(leader.scoreMeters) || 0));
+    furthestX = Math.max(furthestX, Number(leader.furthestX) || player.x, player.x);
+    generateUntil(Math.max(cameraX + W * 2.8, player.x + W * 2.8));
+    updateScoreHud();
   }
 
-  if (steps >= maxSteps) {
-    playback.realElapsed = Math.min(playback.realElapsed, playback.simElapsed + 0.2);
-  }
-
-  if (gameOver || playback.index >= playback.replay.frames.length) {
+  if (playback.elapsed >= playback.duration + REPLAY_END_HOLD) {
     finishCrashReplay();
   }
 }
@@ -663,7 +802,11 @@ function draw() {
   drawTerrain();
   drawObstacles();
   drawAnchors();
-  drawRopeAndPlayer();
+  if (replayMode && activeReplayPlayback) {
+    drawReplayGhosts();
+  } else {
+    drawRopeAndPlayer();
+  }
   if (replayMode) drawReplayBadge();
   if (DEBUG_HITBOXES) drawDebugHitboxes();
 
@@ -676,8 +819,85 @@ function drawCrashCard() {
   // real clickable/focusable controls on both desktop and mobile.
 }
 
+function applyReplayRenderState(state) {
+  if (!state || !state.player) return false;
+
+  Object.assign(player, cloneReplayPlayer(state.player));
+  const nextRagdoll = cloneReplayRagdoll(state.ragdoll || {});
+  ragdoll.initialized = nextRagdoll.initialized;
+  ragdoll.visualSide = nextRagdoll.visualSide;
+  ragdoll.joints = nextRagdoll.joints;
+
+  Object.assign(hookArm, cloneReplayHookArm(state.hookArm || {}));
+  ropeShot = cloneReplayRopeShot(state.ropeShot || null);
+  return true;
+}
+
+function saveReplayRenderGlobals() {
+  return {
+    player: cloneReplayPlayer(),
+    ragdoll: cloneReplayRagdoll(),
+    hookArm: cloneReplayHookArm(),
+    ropeShot: cloneReplayRopeShot(),
+    appearance: { ...characterAppearance },
+  };
+}
+
+function restoreReplayRenderGlobals(saved) {
+  Object.assign(player, cloneReplayPlayer(saved.player));
+  const savedRagdoll = cloneReplayRagdoll(saved.ragdoll);
+  ragdoll.initialized = savedRagdoll.initialized;
+  ragdoll.visualSide = savedRagdoll.visualSide;
+  ragdoll.joints = savedRagdoll.joints;
+  Object.assign(hookArm, cloneReplayHookArm(saved.hookArm));
+  ropeShot = cloneReplayRopeShot(saved.ropeShot);
+  characterAppearance.hat = saved.appearance.hat || null;
+  characterAppearance.backpack = Boolean(saved.appearance.backpack);
+}
+
+function applyReplayAppearance(appearance = {}) {
+  characterAppearance.hat = appearance.hat || null;
+  characterAppearance.backpack = Boolean(appearance.backpack);
+  if (typeof preloadCharacterAppearance === 'function') preloadCharacterAppearance();
+}
+
+function drawReplayGhosts() {
+  const playback = activeReplayPlayback;
+  if (!playback || !playback.replays) return;
+
+  const saved = saveReplayRenderGlobals();
+  try {
+    for (let i = 0; i < playback.replays.length; i += 1) {
+      const replay = playback.replays[i];
+      const sample = replaySampleAt(playback, i, playback.elapsed);
+      if (!sample || !applyReplayRenderState(sample)) continue;
+
+      const isLatest = i === playback.replays.length - 1;
+      const alpha = (sample.replayAlpha ?? 1) * (isLatest ? 0.82 : 0.5);
+      if (alpha <= 0.01) continue;
+
+      applyReplayAppearance(replay.characterAppearance);
+      const savedRope = ROPE;
+      const savedMutedLine = MUTED_LINE;
+      ROPE = INK;
+      MUTED_LINE = INK;
+      ctx.save();
+      try {
+        ctx.globalAlpha *= alpha;
+        drawRopeAndPlayer();
+      } finally {
+        ctx.restore();
+        ROPE = savedRope;
+        MUTED_LINE = savedMutedLine;
+      }
+    }
+  } finally {
+    restoreReplayRenderGlobals(saved);
+  }
+}
+
 function drawReplayBadge() {
-  const text = 'replay · esc to crash screen';
+  const text = 'replay';
   ctx.save();
   ctx.font = '900 24px "Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive';
   ctx.textBaseline = 'middle';
@@ -706,8 +926,9 @@ function frame(ts) {
     if (replayMode) {
       updateReplayPlayback(dt);
     } else {
-      recordReplayFrame(dt);
+      const replayFrame = recordReplayFrame(dt);
       update(dt);
+      captureReplayFrameState(replayFrame);
     }
   }
   draw();

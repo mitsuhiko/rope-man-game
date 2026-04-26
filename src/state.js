@@ -402,10 +402,14 @@ function refreshScoreAndRecords() {
 
 function setGameSeed(seedValue, options = {}) {
   const { writeUrl = true } = options;
+  const previousSeedValue = gameSeedValue;
   gameSeedValue = normalizeSeedValue(seedValue);
   gameSeedText = seedTextFromValue(gameSeedValue);
   rngState = gameSeedValue;
   syncCurrentSeedStats();
+  if (previousSeedValue !== gameSeedValue && typeof clearReplayHistory === 'function') {
+    clearReplayHistory();
+  }
   if (writeUrl) writeSeedToUrl(gameSeedText);
   updateScoreHud();
 }
@@ -437,6 +441,7 @@ let replayMode = false;
 let activeReplayRecording = null;
 let activeReplayPlayback = null;
 let replayInputOverride = null;
+let seedCrashReplays = [];
 let lastCrashReplay = null;
 let gameAudioPrimed = false;
 let audioContext = null;

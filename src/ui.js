@@ -158,9 +158,12 @@ function showPauseMenu() {
 
 function updateCrashSummary() {
   const attemptLabel = seedAttempts === 1 ? 'attempt 1' : `attempt ${seedAttempts}`;
+  const replayCount = typeof currentSeedReplayCount === 'function' ? currentSeedReplayCount() : 0;
   const canReplay = typeof canWatchCrashReplay === 'function' && canWatchCrashReplay();
   const help = ['space / R: retry current seed'];
-  if (canReplay) help.push('P: watch replay');
+  if (canReplay) {
+    help.push(replayCount > 1 ? `P: watch ${replayCount} replays` : 'P: watch replay');
+  }
   help.push('H: main menu');
 
   let message = '';
@@ -177,7 +180,7 @@ function updateCrashSummary() {
     continueVisible: false,
     replayVisible: canReplay,
     retryLabel: 'retry',
-    replayLabel: 'watch replay',
+    replayLabel: replayCount > 1 ? 'watch replays' : 'watch replay',
     mainMenuLabel: 'main menu',
   });
 }
