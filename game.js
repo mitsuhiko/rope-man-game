@@ -67,6 +67,8 @@
   const PLAYER_HEIGHT_METERS = 1.7;
   const PLAYER_VISUAL_HEIGHT_PX = 124;
   const WORLD_PX_PER_METER = PLAYER_VISUAL_HEIGHT_PX / PLAYER_HEIGHT_METERS;
+  const ANCHOR_TERRAIN_CLEARANCE_METERS = 3.8;
+  const ANCHOR_TERRAIN_CLEARANCE = ANCHOR_TERRAIN_CLEARANCE_METERS * WORLD_PX_PER_METER;
   const HOOK_ARM_REACH = 38;
   const INITIAL_SPAWN_ROPE_LENGTH = 150;
   const INITIAL_SPAWN_ANGLE = 0.10;
@@ -422,7 +424,7 @@
       const difficulty = clamp(nextAnchorX / 5000, 0, 1);
       const gap = rand(260, 420 + difficulty * 90);
       const wave = Math.sin(nextAnchorX / 680) * 95;
-      const maxAnchorY = Math.min(H * 0.58, terrainYAt(nextAnchorX) - 135);
+      const maxAnchorY = terrainYAt(nextAnchorX) - ANCHOR_TERRAIN_CLEARANCE;
       const y = clamp(rand(95 + wave, 315 + wave + difficulty * 80), -160, maxAnchorY);
       addAnchor(nextAnchorX, y);
       nextAnchorX += gap;
