@@ -93,11 +93,15 @@ function makeHatChoice(hatId) {
   const preview = document.createElement('span');
   preview.className = 'hat-choice-preview';
   if (hatId) {
-    const spec = CHARACTER_HATS[hatId];
-    const img = document.createElement('img');
-    img.src = spec.src;
-    img.alt = '';
-    preview.appendChild(img);
+    if (typeof createPaperTintedAccessoryElement === 'function') {
+      preview.appendChild(createPaperTintedAccessoryElement(hatId));
+    } else {
+      const spec = CHARACTER_HATS[hatId];
+      const img = document.createElement('img');
+      img.src = spec.src;
+      img.alt = '';
+      preview.appendChild(img);
+    }
   }
 
   const label = document.createElement('span');

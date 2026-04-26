@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Normalize grayscale hat PNGs to the game's paper color.
+"""Normalize grayscale hat PNGs to neutral white assets.
 
 The generated hat images are grayscale drawings on a white background, but the
-"white" fill is scattered across #f5f5f5..#ffffff.  That leaves a visible cool
-white patch when the hats are drawn over the warm game background (#fffdf7).
+"white" fill is scattered across #f5f5f5..#ffffff.  This script keeps the files
+as neutral grayscale art and clamps near-white fill pixels to pure #ffffff.
 
-This script treats the source image as black ink on a normalized white canvas:
-values at or above WHITE_POINT become pure white, lower grayscale values keep a
-linear anti-aliased ink ramp.  The normalized white ramp is then remapped onto
-PAPER so both solid fills and light anti-aliasing blend with the canvas.
+At runtime the game tints this normalized grayscale ramp to PAPER, so changing
+the in-game paper color later does not require regenerating the assets.
 """
 
 from __future__ import annotations
@@ -19,7 +17,6 @@ import zlib
 from pathlib import Path
 from typing import Iterable
 
-PAPER = (255, 253, 247)
 WHITE_POINT = 245
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -170,13 +167,12 @@ def write_rgba_png(path: Path, width: int, height: int, pixels: bytearray) -> No
 def normalize_pixels(pixels: bytearray) -> int:
     changed = 0
     for i in range(0, len(pixels), 4):
-        alpha = pixels[i + 3]
-        if alpha == 0:
+        if pixels[i + 3] == 0:
             continue
 
         gray = round((pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3)
-        ink_on_white = min(1.0, gray / WHITE_POINT)
-        mapped = tuple(round(channel * ink_on_white) for channel in PAPER)
+        normalized = 255 if gray >= WHITE_POINT else gray
+        mapped = (normalized, normalized, normalized)
 
         if (pixels[i], pixels[i + 1], pixels[i + 2]) != mapped:
             pixels[i], pixels[i + 1], pixels[i + 2] = mapped

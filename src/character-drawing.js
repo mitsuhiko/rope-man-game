@@ -56,6 +56,7 @@ const CHARACTER_HATS = {
   'wizard-hat': { src: 'hats/wizard-hat.png', label: 'wizard hat', width: 50, height: 46, up: 33, side: 1 },
 };
 const characterAccessoryImages = {};
+const characterAccessoryPaperCanvases = {};
 
 function selectedHatId() {
   return characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat] ? characterAppearance.hat : null;
@@ -72,13 +73,81 @@ function setCharacterAppearance(nextAppearance = {}) {
   preloadCharacterAppearance();
 }
 
-function preloadCharacterAppearance() {
-  const hatId = selectedHatId();
+function accessoryImageForHat(hatId) {
   const hat = hatId && CHARACTER_HATS[hatId];
-  if (!hat || characterAccessoryImages[hatId]) return;
+  if (!hat) return null;
+  if (characterAccessoryImages[hatId]) return characterAccessoryImages[hatId];
   const img = new Image();
   img.src = hat.src;
   characterAccessoryImages[hatId] = img;
+  return img;
+}
+
+function preloadCharacterAppearance() {
+  accessoryImageForHat(selectedHatId());
+}
+
+function rgbFromHexColor(color) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(color || '');
+  if (!match) return { r: 255, g: 253, b: 247 };
+  const value = Number.parseInt(match[1], 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+}
+
+function paperTintedAccessoryCanvas(hatId, img) {
+  const paper = rgbFromHexColor(PAPER);
+  const key = `${hatId}:${img.naturalWidth}x${img.naturalHeight}:${paper.r},${paper.g},${paper.b}`;
+  if (characterAccessoryPaperCanvases[key]) return characterAccessoryPaperCanvases[key];
+
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const tintCtx = canvas.getContext('2d');
+  tintCtx.drawImage(img, 0, 0);
+
+  const imageData = tintCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] === 0) continue;
+    const shade = (data[i] + data[i + 1] + data[i + 2]) / (255 * 3);
+    data[i] = Math.round(paper.r * shade);
+    data[i + 1] = Math.round(paper.g * shade);
+    data[i + 2] = Math.round(paper.b * shade);
+  }
+  tintCtx.putImageData(imageData, 0, 0);
+
+  characterAccessoryPaperCanvases[key] = canvas;
+  return canvas;
+}
+
+function drawPaperTintedAccessoryToCanvas(canvas, hatId, img) {
+  const tinted = paperTintedAccessoryCanvas(hatId, img);
+  canvas.width = tinted.width;
+  canvas.height = tinted.height;
+  canvas.getContext('2d').drawImage(tinted, 0, 0);
+}
+
+function createPaperTintedAccessoryElement(hatId) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  canvas.setAttribute('aria-hidden', 'true');
+  const img = accessoryImageForHat(hatId);
+  if (!img) return canvas;
+
+  const update = () => {
+    if (img.complete && img.naturalWidth > 0) drawPaperTintedAccessoryToCanvas(canvas, hatId, img);
+  };
+  if (img.complete && img.naturalWidth > 0) {
+    update();
+  } else {
+    img.addEventListener('load', update, { once: true });
+  }
+  return canvas;
 }
 
 function drawOrientedImage(img, center, xAxis, yAxis, width, height) {
@@ -171,9 +240,9 @@ function drawCharacterHat(core) {
   const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
   const mul = (v, s) => ({ x: v.x * s, y: v.y * s });
   const center = add(add(head, mul(body, -spec.up)), mul(side, spec.side || 0));
-  const img = characterAccessoryImages[hatId];
+  const img = accessoryImageForHat(hatId);
   if (img && img.complete && img.naturalWidth > 0) {
-    drawOrientedImage(img, center, side, body, spec.width, spec.height);
+    drawOrientedImage(paperTintedAccessoryCanvas(hatId, img), center, side, body, spec.width, spec.height);
   } else {
     preloadCharacterAppearance();
     drawPrimitiveHat(core);
