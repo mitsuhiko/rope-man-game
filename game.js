@@ -8,6 +8,7 @@ function reset() {
   cameraVY = 0;
   time = 0;
   gameOver = false;
+  gamePaused = false;
   setCrashActionsVisible(false);
   stopGameOverSound();
   furthestX = 0;
@@ -65,7 +66,34 @@ function reset() {
 }
 
 function retryCurrentSeed() {
+  gamePaused = false;
   reset();
+}
+
+function resumeGame() {
+  if (!gameStarted || gameOver) return;
+  gamePaused = false;
+  setCrashActionsVisible(false);
+  last = 0;
+}
+
+function pauseGame() {
+  if (!gameStarted || gameOver || gamePaused) return;
+  gamePaused = true;
+  keys.left = false;
+  keys.right = false;
+  keys.up = false;
+  keys.down = false;
+  resetJoystickInput();
+  showPauseMenu();
+}
+
+function togglePause() {
+  if (gamePaused) {
+    resumeGame();
+  } else {
+    pauseGame();
+  }
 }
 
 function updateFocus() {
@@ -121,7 +149,7 @@ function updateFocus() {
 }
 
 function inputAction() {
-  if (!gameStarted) return;
+  if (!gameStarted || gamePaused) return;
   primeGameAudio();
   if (gameOver) {
     retryCurrentSeed();
@@ -158,8 +186,21 @@ function inputAction() {
 
 window.addEventListener('keydown', (e) => {
   if (!gameStarted) return;
+  if (e.code === 'Escape') {
+    e.preventDefault();
+    if (!gameOver) togglePause();
+    return;
+  }
   primeGameAudio();
-  if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
+  if (gamePaused && e.code === 'KeyR') {
+    e.preventDefault();
+    retryCurrentSeed();
+  } else if (gamePaused && e.code === 'KeyH') {
+    e.preventDefault();
+    returnToMainMenu();
+  } else if (gamePaused) {
+    e.preventDefault();
+  } else if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
     e.preventDefault();
     retryCurrentSeed();
   } else if (gameOver && e.code === 'KeyH') {
@@ -200,7 +241,7 @@ window.addEventListener('keyup', (e) => {
   }
 });
 window.addEventListener('pointerdown', (e) => {
-  if (!gameStarted) return;
+  if (!gameStarted || gamePaused) return;
   if (e.target.closest && e.target.closest('.touch-controls')) return;
   e.preventDefault();
   primeGameAudio();
@@ -383,6 +424,7 @@ function attachToAnchor(anchor) {
 
 function die() {
   if (gameOver) return;
+  gamePaused = false;
   runFinalScore = refreshScoreAndRecords();
   gameOver = true;
   updateCrashSummary();
@@ -423,7 +465,7 @@ function draw() {
   drawRopeAndPlayer();
   if (DEBUG_HITBOXES) drawDebugHitboxes();
 
-  if (gameOver) drawCrashCard();
+  if (gameOver || gamePaused) drawCrashCard();
 }
 
 
@@ -436,7 +478,7 @@ function frame(ts) {
   if (!last) last = ts;
   const dt = Math.min(0.033, (ts - last) / 1000);
   last = ts;
-  if (gameStarted) update(dt);
+  if (gameStarted && !gamePaused) update(dt);
   draw();
   requestAnimationFrame(frame);
 }
@@ -559,7 +601,7 @@ function setupPerfLogging() {
     } : null;
 
     console.groupCollapsed(
-      `[perf] ${gameStarted ? (gameOver ? 'game-over' : 'playing') : 'menu'} ` +
+      `[perf] ${gameStarted ? (gameOver ? 'game-over' : (gamePaused ? 'paused' : 'playing')) : 'menu'} ` +
       `${frames} frames/${seconds.toFixed(1)}s ` +
       `${(frames / seconds).toFixed(1)} fps ` +
       `frame ${percentile(perf.frameDeltas, 0.5).toFixed(1)}ms p50 / ${percentile(perf.frameDeltas, 0.95).toFixed(1)}ms p95 ` +

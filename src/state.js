@@ -25,10 +25,13 @@ const touchActionEl = document.getElementById('touch-action');
 const touchJoystickEl = document.getElementById('touch-joystick');
 const touchStickEl = document.getElementById('touch-stick');
 const crashActionsEl = document.getElementById('crash-actions');
+const crashTitleEl = document.getElementById('crash-title');
+const crashContinueEl = document.getElementById('crash-continue');
 const crashRetryEl = document.getElementById('crash-retry');
 const crashMainMenuEl = document.getElementById('crash-main-menu');
 const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
+const crashHelpEl = document.getElementById('crash-help');
 const AUDIO_FILES = {
   gameOver: { url: 'game-over.wav', volume: 0.72 },
   hook: { url: 'hook-swoosh.wav', volume: 1 },
@@ -311,6 +314,7 @@ let cameraY = 0;
 let cameraVX = 0;
 let cameraVY = 0;
 let gameOver = false;
+let gamePaused = false;
 let gameAudioPrimed = false;
 let audioContext = null;
 let audioLoadStarted = false;

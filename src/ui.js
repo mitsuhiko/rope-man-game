@@ -98,25 +98,75 @@ function setupMobileZoomGuard() {
   }
 }
 
-function setCrashActionsVisible(visible) {
+function setRunMenuVisible(visible) {
   if (gameShellEl) gameShellEl.classList.toggle('is-crashed', visible);
   if (crashActionsEl) crashActionsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
+function setCrashActionsVisible(visible) {
+  setRunMenuVisible(visible);
+}
+
+function setButtonVisible(button, visible) {
+  if (!button) return;
+  button.hidden = !visible;
+}
+
+function setRunMenuContent(options) {
+  const {
+    title,
+    record = '',
+    stats = '',
+    help = [],
+    continueVisible = false,
+    retryLabel = 'retry',
+    mainMenuLabel = 'main menu',
+  } = options;
+
+  if (crashTitleEl) crashTitleEl.textContent = title;
+  if (crashRecordEl) crashRecordEl.textContent = record;
+  if (crashStatsEl) crashStatsEl.textContent = stats;
+  if (crashHelpEl) {
+    crashHelpEl.replaceChildren(...help.map((line) => {
+      const div = document.createElement('div');
+      div.textContent = line;
+      return div;
+    }));
+  }
+  setButtonVisible(crashContinueEl, continueVisible);
+  if (crashRetryEl) crashRetryEl.textContent = retryLabel;
+  if (crashMainMenuEl) crashMainMenuEl.textContent = mainMenuLabel;
+}
+
+function showPauseMenu() {
+  setRunMenuContent({
+    title: 'PAUSED',
+    stats: `seed ${gameSeedText} · score ${scoreMeters}m`,
+    help: ['esc: continue', 'R: replay current seed', 'H: main menu'],
+    continueVisible: true,
+    retryLabel: 'replay',
+    mainMenuLabel: 'main menu',
+  });
+  setRunMenuVisible(true);
+}
+
 function updateCrashSummary() {
   const attemptLabel = seedAttempts === 1 ? 'attempt 1' : `attempt ${seedAttempts}`;
-  if (crashRecordEl) {
-    let message = '';
-    if (runHadOverallRecord) {
-      message = runHadSeedRecord ? 'new overall + seed record!' : 'new overall record!';
-    } else if (runHadSeedRecord) {
-      message = 'new seed record!';
-    }
-    crashRecordEl.textContent = message;
+  let message = '';
+  if (runHadOverallRecord) {
+    message = runHadSeedRecord ? 'new overall + seed record!' : 'new overall record!';
+  } else if (runHadSeedRecord) {
+    message = 'new seed record!';
   }
-  if (crashStatsEl) {
-    crashStatsEl.textContent = `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}`;
-  }
+  setRunMenuContent({
+    title: 'CRASH',
+    record: message,
+    stats: `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}`,
+    help: ['space / R: retry current seed', 'H: main menu'],
+    continueVisible: false,
+    retryLabel: 'retry',
+    mainMenuLabel: 'main menu',
+  });
 }
 
 function setupCrashControls() {
@@ -138,6 +188,7 @@ function setupCrashControls() {
     });
   };
 
+  bind(crashContinueEl, resumeGame);
   bind(crashRetryEl, retryCurrentSeed);
   bind(crashMainMenuEl, returnToMainMenu);
 }

@@ -178,6 +178,7 @@ function setupStartControls() {
 function returnToMainMenu() {
   gameStarted = false;
   gameOver = false;
+  gamePaused = false;
   setCrashActionsVisible(false);
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setStartScreenVisible(true);

@@ -630,6 +630,7 @@
 
     .crash-panel-actions {
       display: flex;
+      flex-wrap: wrap;
       justify-content: center;
       gap: clamp(12px, 2.2vw, 20px);
       margin-top: clamp(18px, 3vw, 26px);
@@ -657,6 +658,7 @@
       cursor: pointer;
     }
 
+    .crash-button--continue,
     .crash-button--retry {
       min-width: clamp(132px, 16vw, 168px);
     }
@@ -781,6 +783,7 @@
         padding: 0 14px;
         font-size: clamp(22px, 6vw, 28px);
       }
+      .crash-button--continue,
       .crash-button--retry,
       .crash-button--main-menu {
         min-width: 0;
@@ -845,11 +848,12 @@
       <h1 id="crash-title" class="crash-title">CRASH</h1>
       <div id="crash-record" class="crash-record"></div>
       <div id="crash-stats" class="crash-stats"></div>
-      <div class="crash-help">
+      <div id="crash-help" class="crash-help">
         <div>space / R: retry current seed</div>
         <div>H: main menu</div>
       </div>
       <div class="crash-panel-actions">
+        <button id="crash-continue" class="crash-button crash-button--continue" type="button" hidden>continue</button>
         <button id="crash-retry" class="crash-button crash-button--retry" type="button">retry</button>
         <button id="crash-main-menu" class="crash-button crash-button--main-menu" type="button">main menu</button>
       </div>
