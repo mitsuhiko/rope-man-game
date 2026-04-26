@@ -84,6 +84,7 @@
       letter-spacing: 0.02em;
     }
 
+    .score-seed,
     .score-meta {
       margin-top: 5px;
       color: var(--muted);
@@ -91,6 +92,10 @@
       line-height: 1.2;
       font-weight: 900;
       letter-spacing: 0.02em;
+    }
+
+    .score-seed {
+      letter-spacing: 0.06em;
     }
 
     .touch-controls {
@@ -226,6 +231,7 @@
         margin-top: 4px;
         font-size: 14px;
       }
+      .score-seed,
       .score-meta {
         margin-top: 3px;
         font-size: 8px;
@@ -239,6 +245,7 @@
     <section class="hud" aria-label="Score">
       <div class="score-label">score</div>
       <div class="score-value"><span id="score">0</span>m</div>
+      <div class="score-seed">seed <span id="seed">------</span></div>
       <div class="score-meta">best <span id="best">0</span>m · <span id="state">attached</span></div>
     </section>
     <div class="touch-controls" aria-label="Touch controls">

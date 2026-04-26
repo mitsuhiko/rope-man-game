@@ -4,6 +4,7 @@
   const scoreEl = document.getElementById('score');
   const bestEl = document.getElementById('best');
   const stateEl = document.getElementById('state');
+  const seedEl = document.getElementById('seed');
   const touchControlsEl = document.querySelector('.touch-controls');
   const touchActionEl = document.getElementById('touch-action');
   const touchJoystickEl = document.getElementById('touch-joystick');
@@ -27,6 +28,68 @@
   const BG1 = '#eeeeee';
   const BG2 = '#dddddd';
   const BEST_SCORE_KEY = 'ropeDashBestMetersV2';
+  const SEED_PARAM = 'seed';
+  const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const DEFAULT_RNG_SEED = 0x6d2b79f5;
+
+  function normalizeSeedValue(value) {
+    value >>>= 0;
+    return value || DEFAULT_RNG_SEED;
+  }
+
+  function seedValueFromText(text) {
+    if (!text) return null;
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+
+    let value = 0;
+    for (const ch of trimmed) {
+      const digit = BASE62_ALPHABET.indexOf(ch);
+      if (digit < 0) return null;
+      value = (Math.imul(value, 62) + digit) >>> 0;
+    }
+    return normalizeSeedValue(value);
+  }
+
+  function seedTextFromValue(value) {
+    value = normalizeSeedValue(value);
+    let text = '';
+    do {
+      text = BASE62_ALPHABET[value % 62] + text;
+      value = Math.floor(value / 62);
+    } while (value > 0);
+    return text;
+  }
+
+  function randomSeedValue() {
+    const values = new Uint32Array(1);
+    if (window.crypto && window.crypto.getRandomValues) {
+      do {
+        window.crypto.getRandomValues(values);
+      } while (values[0] === 0);
+      return values[0] >>> 0;
+    }
+    return normalizeSeedValue((Date.now() ^ Math.floor(performance.now() * 1000000)) >>> 0);
+  }
+
+  function writeSeedToUrl(seedText) {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get(SEED_PARAM) === seedText) return;
+      url.searchParams.set(SEED_PARAM, seedText);
+      window.history.replaceState(null, '', url.toString());
+    } catch (_) {
+      // Ignore URL/history failures, e.g. unusual embedded browser contexts.
+    }
+  }
+
+  const initialSearchParams = new URLSearchParams(window.location.search);
+  const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
+  const gameSeedValue = requestedSeedValue ?? randomSeedValue();
+  const gameSeedText = seedTextFromValue(gameSeedValue);
+  writeSeedToUrl(gameSeedText);
+  if (seedEl) seedEl.textContent = gameSeedText;
+  let rngState = gameSeedValue;
 
   const W = 1280;
   const H = 720;
@@ -46,7 +109,7 @@
   let gameAudioPrimed = false;
   let furthestX = 0;
   let scoreStartX = 0;
-  const DEBUG_HITBOXES = new URLSearchParams(window.location.search).get('debug') === '1';
+  const DEBUG_HITBOXES = initialSearchParams.get('debug') === '1';
   let best = Number(localStorage.getItem(BEST_SCORE_KEY) || 0);
 
   const GRAVITY = 1500;
@@ -167,7 +230,16 @@
     new ResizeObserver(resize).observe(canvas);
   }
 
-  const rand = (a, b) => a + Math.random() * (b - a);
+  function random() {
+    let x = rngState;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    rngState = normalizeSeedValue(x);
+    return rngState / 0x100000000;
+  }
+
+  const rand = (a, b) => a + random() * (b - a);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const hypot = Math.hypot;
 
@@ -427,6 +499,7 @@
   }
 
   function reset() {
+    rngState = gameSeedValue;
     cameraX = 0;
     cameraY = 0;
     cameraVX = 0;
@@ -492,8 +565,8 @@
       y: rand(80, Math.max(180, H - 120)),
       size: rand(18, 86),
       sides: Math.floor(rand(0, 4)),
-      shade: Math.random() < 0.5 ? BG1 : BG2,
-      layer: Math.random() < 0.55 ? 0.28 : 0.48,
+      shade: random() < 0.5 ? BG1 : BG2,
+      layer: random() < 0.55 ? 0.28 : 0.48,
       rot: rand(0, Math.PI),
     };
   }
@@ -525,7 +598,7 @@
 
   function spawnObstacleCluster(x, i) {
     const difficulty = clamp(x / 5500, 0, 1);
-    const roll = Math.random();
+    const roll = random();
     const groundY = terrainYAt(x);
 
     if (i < 1) {
@@ -554,7 +627,7 @@
         phase: rand(0, Math.PI * 2),
       });
     } else {
-      const ceiling = Math.random() < 0.30;
+      const ceiling = random() < 0.30;
       const size = rand(22, 31);
       const count = Math.floor(rand(4, 9));
       const spikeX = x + (ceiling ? 0 : rand(-50, 95));
@@ -945,7 +1018,7 @@
       const x = terrainCursorX + gap;
       const mid = (TERRAIN_MIN_Y + TERRAIN_MAX_Y) / 2;
       const lastWasHill = terrainLastY < mid;
-      const makeValley = lastWasHill ? Math.random() < 0.78 : Math.random() < 0.34;
+      const makeValley = lastWasHill ? random() < 0.78 : random() < 0.34;
       let y = makeValley ? rand(mid + 42, TERRAIN_MAX_Y) : rand(TERRAIN_MIN_Y, mid - 24);
 
       // A low-frequency wobble keeps the silhouette from becoming a simple
@@ -976,7 +1049,7 @@
 
         if (leftEdge != null && rightEdge != null && rightEdge - leftEdge >= TERRAIN_POOL_MIN_W * 0.45) {
           terrainPools.push({
-            type: Math.random() < 0.62 ? 'water' : 'lava',
+            type: random() < 0.62 ? 'water' : 'lava',
             x: leftEdge,
             w: rightEdge - leftEdge,
             levelY,
