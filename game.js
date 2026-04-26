@@ -4,6 +4,7 @@ function reset(options = {}) {
   const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
   const recordRun = options.recordRun ?? (gameStarted && !replayMode);
 
+  if (countAttempt && typeof resetJoystickInput === 'function') resetJoystickInput();
   resetRandomStreams();
   cameraX = 0;
   cameraY = 0;
@@ -608,6 +609,7 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener('pointerdown', (e) => {
   if (!gameStarted || gamePaused) return;
   if (replayMode) {
+    if (typeof stopReplayFromMobileTap === 'function' && stopReplayFromMobileTap(e)) return;
     e.preventDefault();
     return;
   }

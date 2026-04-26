@@ -42,7 +42,7 @@ const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
 const crashHelpEl = document.getElementById('crash-help');
 const AUDIO_FILES = {
-  gameOver: { url: 'game-over.wav', volume: 0.72 },
+  gameOver: { url: 'game-over.mp3', volume: 0.72 },
   hook: { url: 'hook-swoosh.wav', volume: 1 },
   hookRelease: { url: 'hook-release.wav', volume: 1 },
 };

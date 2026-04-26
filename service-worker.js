@@ -14,7 +14,7 @@ const CORE_ASSETS = [
   "src/state.js",
   "src/ui.js",
   "src/world.js",
-  "game-over.wav",
+  "game-over.mp3",
   "hook-swoosh.wav",
   "hook-release.wav",
   "hats/backward-cap.png",

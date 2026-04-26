@@ -21,7 +21,38 @@ function touchControlsVisible() {
   return touchControlsEl && getComputedStyle(touchControlsEl).display !== 'none';
 }
 
+function mobileViewActive() {
+  if (touchControlsVisible()) return true;
+  if (!window.matchMedia) return false;
+  return (
+    window.matchMedia('(pointer: coarse)').matches ||
+    window.matchMedia('(hover: none)').matches ||
+    window.matchMedia('(max-width: 700px)').matches ||
+    window.matchMedia('(max-height: 480px)').matches
+  );
+}
+
+function shouldPointerStopReplay(e) {
+  return Boolean(e && (e.pointerType === 'touch' || e.pointerType === 'pen' || mobileViewActive()));
+}
+
+function stopReplayFromMobileTap(e) {
+  if (!replayMode || !shouldPointerStopReplay(e)) return false;
+  if (e.cancelable) e.preventDefault();
+  e.stopPropagation();
+  if (typeof finishCrashReplay === 'function') finishCrashReplay();
+  return true;
+}
+
 function resetJoystickInput() {
+  const pointerId = touchInput.joystickPointerId;
+  if (touchJoystickEl && pointerId !== null && touchJoystickEl.hasPointerCapture && touchJoystickEl.hasPointerCapture(pointerId)) {
+    try {
+      touchJoystickEl.releasePointerCapture(pointerId);
+    } catch (_) {
+      // Ignore stale pointer capture ids from browsers that already released it.
+    }
+  }
   touchInput.joystickPointerId = null;
   touchInput.x = 0;
   touchInput.y = 0;
@@ -148,7 +179,9 @@ function showPauseMenu() {
   setRunMenuContent({
     title: 'PAUSED',
     stats: `seed ${gameSeedText} · score ${scoreMeters}m`,
-    help: ['esc: continue', 'R: replay current seed', 'H: main menu'],
+    help: mobileViewActive()
+      ? ['tap continue to resume', 'tap replay to restart this seed', 'tap main menu to choose a seed']
+      : ['esc: continue', 'R: replay current seed', 'H: main menu'],
     continueVisible: true,
     retryLabel: 'replay',
     mainMenuLabel: 'main menu',
@@ -160,11 +193,14 @@ function updateCrashSummary() {
   const attemptLabel = seedAttempts === 1 ? 'attempt 1' : `attempt ${seedAttempts}`;
   const replayCount = typeof currentSeedReplayCount === 'function' ? currentSeedReplayCount() : 0;
   const canReplay = typeof canWatchCrashReplay === 'function' && canWatchCrashReplay();
-  const help = ['space / R: retry current seed'];
+  const isMobile = mobileViewActive();
+  const help = [isMobile ? 'tap retry to play this seed again' : 'space / R: retry current seed'];
   if (canReplay) {
-    help.push(replayCount > 1 ? `P: watch ${replayCount} replays` : 'P: watch replay');
+    help.push(isMobile
+      ? (replayCount > 1 ? `tap watch replays to see ${replayCount} runs` : 'tap watch replay to see the run')
+      : (replayCount > 1 ? `P: watch ${replayCount} replays` : 'P: watch replay'));
   }
-  help.push('H: main menu');
+  help.push(isMobile ? 'tap main menu to choose a seed' : 'H: main menu');
 
   let message = '';
   if (runHadOverallRecord) {
@@ -215,6 +251,7 @@ function setupCrashControls() {
 function setupTouchControls() {
   if (touchActionEl) {
     touchActionEl.addEventListener('pointerdown', (e) => {
+      if (stopReplayFromMobileTap(e)) return;
       e.preventDefault();
       e.stopPropagation();
       inputAction();
@@ -231,12 +268,17 @@ function setupTouchControls() {
       e.preventDefault();
       e.stopPropagation();
       if (touchJoystickEl.hasPointerCapture && touchJoystickEl.hasPointerCapture(e.pointerId)) {
-        touchJoystickEl.releasePointerCapture(e.pointerId);
+        try {
+          touchJoystickEl.releasePointerCapture(e.pointerId);
+        } catch (_) {
+          // Ignore stale pointer capture ids from browsers that already released it.
+        }
       }
       resetJoystickInput();
     };
 
     touchJoystickEl.addEventListener('pointerdown', (e) => {
+      if (stopReplayFromMobileTap(e)) return;
       e.preventDefault();
       e.stopPropagation();
       primeGameAudio();
