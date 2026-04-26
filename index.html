@@ -280,7 +280,7 @@
       position: absolute;
       inset: 0 0 auto auto;
       box-sizing: border-box;
-      width: clamp(132px, 16vw, 220px);
+      width: clamp(156px, 18vw, 246px);
       padding: clamp(7px, 1vw, 13px) clamp(9px, 1.2vw, 16px);
       border: solid var(--ink);
       border-width: 0 0 3px 3px;
@@ -313,6 +313,10 @@
       line-height: 1.2;
       font-weight: 900;
       letter-spacing: 0.02em;
+    }
+
+    .score-attempts {
+      color: rgba(17, 17, 17, 0.58);
     }
 
     .score-seed {
@@ -474,6 +478,30 @@
       text-transform: uppercase;
     }
 
+    .crash-record {
+      min-height: 1.15em;
+      margin-top: clamp(10px, 1.7vw, 15px);
+      color: var(--spike);
+      font-size: clamp(18px, 2.1vw, 26px);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -0.05em;
+      text-transform: lowercase;
+    }
+
+    .crash-record:empty {
+      display: none;
+    }
+
+    .crash-stats {
+      margin-top: clamp(8px, 1.4vw, 12px);
+      color: var(--muted);
+      font-size: clamp(13px, 1.25vw, 17px);
+      font-weight: 900;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+    }
+
     .crash-help {
       margin: clamp(13px, 2vw, 18px) 0 0;
       font-size: clamp(14px, 1.4vw, 18px);
@@ -538,7 +566,7 @@
 
     @media (max-width: 700px), (max-height: 480px) {
       .hud {
-        width: 112px;
+        width: 132px;
         padding: 6px 7px;
       }
       .score-label { font-size: 19px; }
@@ -598,6 +626,10 @@
       .crash-title {
         font-size: clamp(30px, 8vw, 38px);
       }
+      .crash-record {
+        font-size: clamp(17px, 5vw, 24px);
+      }
+      .crash-stats,
       .crash-help {
         font-size: clamp(12px, 3.8vw, 15px);
       }
@@ -649,7 +681,9 @@
       <div class="score-label">score</div>
       <div class="score-value"><span id="score">0</span>m</div>
       <div class="score-seed">seed <span id="seed">------</span></div>
-      <div class="score-meta">best <span id="best">0</span>m</div>
+      <div class="score-meta">overall <span id="best">0</span>m</div>
+      <div class="score-meta">seed best <span id="seed-best">0</span>m</div>
+      <div class="score-meta score-attempts">attempt <span id="attempts">0</span></div>
     </section>
     <div class="touch-controls" aria-label="Touch controls">
       <button id="touch-action" class="touch-action" type="button" aria-label="Hook or unhook"></button>
@@ -660,6 +694,8 @@
     </div>
     <section id="crash-actions" class="crash-panel" aria-hidden="true" aria-labelledby="crash-title">
       <h1 id="crash-title" class="crash-title">CRASH</h1>
+      <div id="crash-record" class="crash-record"></div>
+      <div id="crash-stats" class="crash-stats"></div>
       <div class="crash-help">
         <div>space / R: retry current seed</div>
         <div>H: main menu</div>
@@ -675,8 +711,10 @@
   <script src="src/state.js"></script>
   <script src="src/audio.js"></script>
   <script src="src/ui.js"></script>
+  <script src="src/menu.js"></script>
   <script src="src/world.js"></script>
   <script src="src/character.js"></script>
+  <script src="src/character-drawing.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

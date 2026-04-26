@@ -4,6 +4,8 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
+const seedBestEl = document.getElementById('seed-best');
+const attemptsEl = document.getElementById('attempts');
 const seedEl = document.getElementById('seed');
 const gameShellEl = document.querySelector('.game-shell');
 const startScreenEl = document.getElementById('start-screen');
@@ -19,6 +21,8 @@ const touchStickEl = document.getElementById('touch-stick');
 const crashActionsEl = document.getElementById('crash-actions');
 const crashRetryEl = document.getElementById('crash-retry');
 const crashMainMenuEl = document.getElementById('crash-main-menu');
+const crashRecordEl = document.getElementById('crash-record');
+const crashStatsEl = document.getElementById('crash-stats');
 const AUDIO_FILES = {
   gameOver: { url: 'game-over.wav', volume: 0.72 },
   hook: { url: 'hook-swoosh.wav', volume: 1 },
@@ -37,7 +41,9 @@ const WATER_LINE = '#1668ad';
 const SAW = '#b9b9b9';
 const BG1 = '#eeeeee';
 const BG2 = '#dddddd';
-const BEST_SCORE_KEY = 'ropeDashBestMetersV2';
+const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
+const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
+const SEED_STATS_KEY = 'ropeManSeedStatsV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MAX_SEED_TEXT_LENGTH = 6;
@@ -117,6 +123,64 @@ function writeSeedToUrl(seedText) {
   }
 }
 
+function readStorageNumber(key) {
+  try {
+    const value = Number(localStorage.getItem(key) || 0);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function writeStorageNumber(key, value) {
+  try {
+    localStorage.setItem(key, String(Math.max(0, Math.floor(value))));
+  } catch (_) {
+    // Ignore private-mode/quota storage failures.
+  }
+}
+
+function readStorageJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function writeStorageJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (_) {
+    // Ignore private-mode/quota storage failures.
+  }
+}
+
+function loadOverallBestMeters() {
+  return Math.max(readStorageNumber(BEST_SCORE_KEY), readStorageNumber(LEGACY_BEST_SCORE_KEY));
+}
+
+function loadSeedStats() {
+  const rawStats = readStorageJson(SEED_STATS_KEY, {});
+  const stats = {};
+  if (!rawStats || typeof rawStats !== 'object') return stats;
+
+  for (const [seed, raw] of Object.entries(rawStats)) {
+    if (!/^[0-9A-Za-z]{1,6}$/.test(seed)) continue;
+    const bestValue = typeof raw === 'number' ? raw : raw && raw.best;
+    const attemptsValue = raw && typeof raw === 'object' ? raw.attempts : 0;
+    const bestMeters = Number(bestValue);
+    const attempts = Number(attemptsValue);
+    stats[seed] = {
+      best: Number.isFinite(bestMeters) && bestMeters > 0 ? Math.floor(bestMeters) : 0,
+      attempts: Number.isFinite(attempts) && attempts > 0 ? Math.floor(attempts) : 0,
+    };
+  }
+  return stats;
+}
+
 const initialSearchParams = new URLSearchParams(window.location.search);
 const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
 const hasRequestedSeed = requestedSeedValue !== null;
@@ -124,14 +188,87 @@ let gameSeedValue = requestedSeedValue ?? randomSeedValue();
 let gameSeedText = seedTextFromValue(gameSeedValue);
 let rngState = gameSeedValue;
 let gameStarted = false;
+let scoreMeters = 0;
+let best = loadOverallBestMeters();
+let seedStats = loadSeedStats();
+let seedBest = 0;
+let seedAttempts = 0;
+let runStartBest = best;
+let runStartSeedBest = 0;
+let runHadOverallRecord = false;
+let runHadSeedRecord = false;
+let runFinalScore = 0;
+
+function currentSeedStats() {
+  const raw = seedStats[gameSeedText];
+  if (!raw || typeof raw !== 'object') return { best: 0, attempts: 0 };
+  return {
+    best: Number.isFinite(Number(raw.best)) && Number(raw.best) > 0 ? Math.floor(Number(raw.best)) : 0,
+    attempts: Number.isFinite(Number(raw.attempts)) && Number(raw.attempts) > 0 ? Math.floor(Number(raw.attempts)) : 0,
+  };
+}
+
+function syncCurrentSeedStats() {
+  const stats = currentSeedStats();
+  seedBest = stats.best;
+  seedAttempts = stats.attempts;
+}
+
+function persistCurrentSeedStats() {
+  seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
+  writeStorageJson(SEED_STATS_KEY, seedStats);
+}
+
+function updateScoreHud() {
+  if (scoreEl) scoreEl.textContent = scoreMeters;
+  if (bestEl) bestEl.textContent = best;
+  if (seedBestEl) seedBestEl.textContent = seedBest;
+  if (attemptsEl) attemptsEl.textContent = seedAttempts;
+  if (seedEl) seedEl.textContent = gameSeedText;
+}
+
+function beginSeedAttempt() {
+  syncCurrentSeedStats();
+  seedAttempts += 1;
+  runStartBest = best;
+  runStartSeedBest = seedBest;
+  runHadOverallRecord = false;
+  runHadSeedRecord = false;
+  runFinalScore = 0;
+  persistCurrentSeedStats();
+  updateScoreHud();
+}
+
+function updateRecordsForScore(meters) {
+  const score = Math.max(0, Math.floor(meters));
+  if (score > best) {
+    best = score;
+    runHadOverallRecord = score > runStartBest;
+    writeStorageNumber(BEST_SCORE_KEY, best);
+  }
+  if (score > seedBest) {
+    seedBest = score;
+    runHadSeedRecord = score > runStartSeedBest;
+    persistCurrentSeedStats();
+  }
+}
+
+function refreshScoreAndRecords() {
+  furthestX = Math.max(furthestX, player.x);
+  scoreMeters = Math.max(0, Math.floor((furthestX - scoreStartX) / WORLD_PX_PER_METER));
+  updateRecordsForScore(scoreMeters);
+  updateScoreHud();
+  return scoreMeters;
+}
 
 function setGameSeed(seedValue, options = {}) {
   const { writeUrl = true } = options;
   gameSeedValue = normalizeSeedValue(seedValue);
   gameSeedText = seedTextFromValue(gameSeedValue);
   rngState = gameSeedValue;
+  syncCurrentSeedStats();
   if (writeUrl) writeSeedToUrl(gameSeedText);
-  if (seedEl) seedEl.textContent = gameSeedText;
+  updateScoreHud();
 }
 
 setGameSeed(gameSeedValue, { writeUrl: hasRequestedSeed });
@@ -163,7 +300,6 @@ const audioBuffers = {};
 let furthestX = 0;
 let scoreStartX = 0;
 const DEBUG_HITBOXES = initialSearchParams.get('debug') === '1';
-let best = Number(localStorage.getItem(BEST_SCORE_KEY) || 0);
 
 const GRAVITY = 1500;
 const HOOK_RANGE = 720;
@@ -245,6 +381,11 @@ const hookArm = {
   y: 0,
   ox: 0,
   oy: 0,
+};
+
+const characterAppearance = {
+  hat: null,
+  backpack: false,
 };
 
 let anchors = [];

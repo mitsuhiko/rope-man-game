@@ -12,6 +12,8 @@ function reset() {
   stopGameOverSound();
   furthestX = 0;
   scoreStartX = 0;
+  scoreMeters = 0;
+  runFinalScore = 0;
   anchors = [];
   obstacles = [];
   bgShapes = [];
@@ -54,23 +56,17 @@ function reset() {
   hookArm.y = player.y;
   cameraX = player.x - W * 0.42;
   cameraY = player.y - H * 0.52;
+  if (gameStarted) {
+    beginSeedAttempt();
+  } else {
+    syncCurrentSeedStats();
+    updateScoreHud();
+  }
 }
 
 function retryCurrentSeed() {
   reset();
 }
-
-function returnToMainMenu() {
-  gameStarted = false;
-  gameOver = false;
-  setCrashActionsVisible(false);
-  setStartScreenVisible(true);
-  setStartSeedError('');
-  resetJoystickInput();
-  stopGameOverSound();
-  last = 0;
-}
-
 
 function updateFocus() {
   if (ropeShot) {
@@ -282,15 +278,7 @@ function update(dt) {
     }
   }
 
-  furthestX = Math.max(furthestX, player.x);
-  const dist = Math.max(0, Math.floor((furthestX - scoreStartX) / WORLD_PX_PER_METER));
-  if (dist > best) {
-    best = dist;
-    localStorage.setItem(BEST_SCORE_KEY, String(best));
-  }
-  scoreEl.textContent = dist;
-  bestEl.textContent = best;
-
+  refreshScoreAndRecords();
 }
 
 function adjustedRopeLength(oldLength, delta) {
@@ -394,7 +382,10 @@ function attachToAnchor(anchor) {
 }
 
 function die() {
+  if (gameOver) return;
+  runFinalScore = refreshScoreAndRecords();
   gameOver = true;
+  updateCrashSummary();
   setCrashActionsVisible(true);
   playGameOverSound();
   player.attached = false;
@@ -457,5 +448,5 @@ setupCrashControls();
 setupTouchControls();
 resize();
 reset();
-bestEl.textContent = best;
+updateScoreHud();
 requestAnimationFrame(frame);

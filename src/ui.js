@@ -1,4 +1,4 @@
-// Main menu, crash overlay, touch controls, and mobile browser guards.
+// Crash overlay, touch controls, and mobile browser guards.
 
 function inputAxisX() {
   const keyboard = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
@@ -98,80 +98,25 @@ function setupMobileZoomGuard() {
   }
 }
 
-function setStartSeedError(message) {
-  if (!startSeedErrorEl || !startSeedInputEl) return;
-  startSeedErrorEl.textContent = message || '';
-  startSeedInputEl.classList.toggle('is-invalid', Boolean(message));
-  startSeedInputEl.setAttribute('aria-invalid', message ? 'true' : 'false');
-}
-
-function setStartScreenVisible(visible) {
-  if (gameShellEl) gameShellEl.classList.toggle('is-starting', visible);
-  if (startScreenEl) startScreenEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
-}
-
-function startGameWithSeed(seedValue) {
-  primeGameAudio();
-  setStartSeedError('');
-  setGameSeed(seedValue);
-  gameStarted = true;
-  setStartScreenVisible(false);
-  reset();
-  last = 0;
-}
-
-function startRandomSeed() {
-  startGameWithSeed(randomSeedValue());
-}
-
-function startSpecificSeed() {
-  const seedText = startSeedInputEl ? (startSeedInputEl.value.trim() || startSeedInputEl.placeholder) : '';
-  const result = validateSeedText(seedText);
-  if (result.error) {
-    setStartSeedError(result.error);
-    if (startSeedInputEl) startSeedInputEl.focus();
-    return;
-  }
-  if (startSeedInputEl) startSeedInputEl.value = result.text;
-  startGameWithSeed(result.value);
-}
-
-function bindStartButton(button, action) {
-  if (!button) return;
-  button.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    action();
-  }, { passive: false });
-  button.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.detail === 0) action();
-  });
-}
-
-function setupStartControls() {
-  if (startSeedInputEl && !startSeedInputEl.placeholder) {
-    startSeedInputEl.placeholder = seedTextFromValue(randomSeedValue());
-  }
-  setStartScreenVisible(!gameStarted);
-  bindStartButton(startRandomEl, startRandomSeed);
-  bindStartButton(startSeedSubmitEl, startSpecificSeed);
-
-  if (startSeedFormEl) {
-    startSeedFormEl.addEventListener('submit', (e) => {
-      e.preventDefault();
-      startSpecificSeed();
-    });
-  }
-  if (startSeedInputEl) {
-    startSeedInputEl.addEventListener('input', () => setStartSeedError(''));
-  }
-}
-
 function setCrashActionsVisible(visible) {
   if (gameShellEl) gameShellEl.classList.toggle('is-crashed', visible);
   if (crashActionsEl) crashActionsEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function updateCrashSummary() {
+  const attemptLabel = seedAttempts === 1 ? 'attempt 1' : `attempt ${seedAttempts}`;
+  if (crashRecordEl) {
+    let message = '';
+    if (runHadOverallRecord) {
+      message = runHadSeedRecord ? 'new overall + seed record!' : 'new overall record!';
+    } else if (runHadSeedRecord) {
+      message = 'new seed record!';
+    }
+    crashRecordEl.textContent = message;
+  }
+  if (crashStatsEl) {
+    crashStatsEl.textContent = `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}`;
+  }
 }
 
 function setupCrashControls() {
