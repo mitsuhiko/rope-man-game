@@ -1,44 +1,15 @@
 // Stickman drawing and character customization slots.
 
-const CHARACTER_HAT_ORDER = [
-  'backward-cap',
-  'balaclava',
-  'bandana',
-  'baseball-cap-side',
-  'baseball-cap',
-  'bonnet',
-  'bucket-hat',
-  'crown',
-  'flame',
-  'headphones',
-  'headset',
-  'helmet',
-  'ninja-mask',
-  'party-hat',
-  'pirate-hat',
-  'pom-beanie',
-  'samurai-helmet',
-  'silly-face',
-  'skull',
-  'spiky-hair',
-  'sunglasses',
-  'top-hat',
-  'tv-head',
-  'viking-helmet',
-  'wizard-hat',
-];
-
 const CHARACTER_HATS = {
   'backward-cap': { src: 'hats/backward-cap.png', label: 'backward cap', width: 42, height: 32, up: 18, side: -2 },
   balaclava: { src: 'hats/balaclava.png', label: 'balaclava', width: 38, height: 52, up: 1, side: 0 },
-  bandana: { src: 'hats/bandana.png', label: 'bandana', width: 44, height: 31, up: 16, side: -1 },
+  bandana: { src: 'hats/bandana.png', label: 'bandana', width: 44, height: 31, up: 6, side: 4 },
   'baseball-cap-side': { src: 'hats/baseball-cap-side.png', label: 'side cap', width: 48, height: 32, up: 19, side: -3 },
   'baseball-cap': { src: 'hats/baseball-cap.png', label: 'baseball cap', width: 43, height: 28, up: 19, side: -1 },
-  bonnet: { src: 'hats/bonnet.png', label: 'bonnet', width: 42, height: 50, up: 8, side: 0 },
+  bonnet: { src: 'hats/bonnet.png', label: 'bonnet', width: 42, height: 60, up: 8, side: 0 },
   'bucket-hat': { src: 'hats/bucket-hat.png', label: 'bucket hat', width: 44, height: 30, up: 20, side: 0 },
   crown: { src: 'hats/crown.png', label: 'crown', width: 40, height: 30, up: 27, side: 0 },
   flame: { src: 'hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },
-  headphones: { src: 'hats/headphones.png', label: 'headphones', width: 42, height: 42, up: 2, side: 0 },
   headset: { src: 'hats/headset.png', label: 'headset', width: 45, height: 43, up: 2, side: 0 },
   helmet: { src: 'hats/helmet.png', label: 'helmet', width: 42, height: 42, up: 14, side: 0 },
   'ninja-mask': { src: 'hats/ninja-mask.png', label: 'ninja mask', width: 43, height: 43, up: 2, side: 5 },
@@ -48,13 +19,14 @@ const CHARACTER_HATS = {
   'samurai-helmet': { src: 'hats/samurai-helmet.png', label: 'samurai', width: 48, height: 42, up: 18, side: 0 },
   'silly-face': { src: 'hats/silly-face.png', label: 'silly face', width: 40, height: 42, up: 0, side: 0 },
   skull: { src: 'hats/skull.png', label: 'skull', width: 37, height: 42, up: 2, side: 0 },
-  'spiky-hair': { src: 'hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 24, side: 0 },
+  'spiky-hair': { src: 'hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 12, side: 1 },
   sunglasses: { src: 'hats/sunglasses.png', label: 'sunglasses', width: 41, height: 14, up: 0, side: 1 },
   'top-hat': { src: 'hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 28, side: 0 },
   'tv-head': { src: 'hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
   'viking-helmet': { src: 'hats/viking-helmet.png', label: 'viking', width: 48, height: 35, up: 21, side: 0 },
-  'wizard-hat': { src: 'hats/wizard-hat.png', label: 'wizard hat', width: 50, height: 46, up: 33, side: 1 },
+  'wizard-hat': { src: 'hats/wizard-hat.png', label: 'wizard hat', width: 50, height: 46, up: 23, side: 1 },
 };
+const CHARACTER_HAT_ORDER = Object.keys(CHARACTER_HATS);
 const characterAccessoryImages = {};
 const characterAccessoryPaperCanvases = {};
 
