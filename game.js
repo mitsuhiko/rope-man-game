@@ -271,6 +271,19 @@
     setJoystickVisual(ux * visualDistance, uy * visualDistance);
   }
 
+  function setupMobileZoomGuard() {
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = performance.now();
+      if (lastTouchEnd && now - lastTouchEnd < 350) e.preventDefault();
+      lastTouchEnd = now;
+    }, { passive: false });
+
+    for (const eventName of ['gesturestart', 'gesturechange']) {
+      document.addEventListener(eventName, (e) => e.preventDefault(), { passive: false });
+    }
+  }
+
   function setupTouchControls() {
     if (touchActionEl) {
       touchActionEl.addEventListener('pointerdown', (e) => {
@@ -1841,6 +1854,7 @@
     requestAnimationFrame(frame);
   }
 
+  setupMobileZoomGuard();
   setupTouchControls();
   resize();
   reset();

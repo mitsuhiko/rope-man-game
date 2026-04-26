@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Rope Dash Spike</title>
   <style>
     :root {
@@ -21,6 +21,9 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-text-size-adjust: 100%;
       background: var(--paper);
       color: var(--ink);
       font-family: "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive;
@@ -114,7 +117,7 @@
     }
 
     .touch-action {
-      left: calc(env(safe-area-inset-left, 0px) + clamp(18px, 4vw, 34px));
+      right: calc(env(safe-area-inset-right, 0px) + clamp(18px, 4vw, 34px));
       padding: 0;
       appearance: none;
       -webkit-appearance: none;
@@ -149,7 +152,7 @@
     }
 
     .touch-joystick {
-      right: calc(env(safe-area-inset-right, 0px) + clamp(18px, 4vw, 34px));
+      left: calc(env(safe-area-inset-left, 0px) + clamp(18px, 4vw, 34px));
     }
 
     .touch-joystick::before,
