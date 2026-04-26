@@ -17,6 +17,8 @@ const startSeedSubmitEl = document.getElementById('start-seed-submit');
 const startSeedErrorEl = document.getElementById('start-seed-error');
 const startCustomizeOpenEl = document.getElementById('start-customize-open');
 const startCustomizeCloseEl = document.getElementById('start-customize-close');
+const startSoundToggleEl = document.getElementById('start-sound-toggle');
+const startThemeToggleEl = document.getElementById('start-theme-toggle');
 const startCustomizationMenuEl = document.getElementById('start-customization-menu');
 const startHatGridEl = document.getElementById('start-hat-grid');
 const startCharacterSelectionEl = document.getElementById('start-character-selection');
@@ -39,21 +41,57 @@ const AUDIO_FILES = {
 };
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
-const INK = '#111111';
-const PAPER = '#fffdf7';
-const ROPE = '#8b5a2b';
-const SPIKE = '#d82424';
-const LAVA = '#ff6a21';
-const LAVA_LINE = '#b83d12';
-const WATER = '#2f9bff';
-const WATER_LINE = '#1668ad';
-const SAW = '#b9b9b9';
-const BG1 = '#eeeeee';
-const BG2 = '#dddddd';
+const THEME_PALETTES = {
+  light: {
+    INK: '#111111',
+    PAPER: '#fffdf7',
+    ROPE: '#8b5a2b',
+    SPIKE: '#d82424',
+    LAVA: '#ff6a21',
+    LAVA_LINE: '#b83d12',
+    WATER: '#2f9bff',
+    WATER_LINE: '#1668ad',
+    SAW: '#b9b9b9',
+    BG1: '#eeeeee',
+    BG2: '#dddddd',
+    MUTED_LINE: '#777777',
+    FAINT_LINE: '#bbbbbb',
+  },
+  dark: {
+    INK: '#fff3df',
+    PAPER: '#111116',
+    ROPE: '#df9f56',
+    SPIKE: '#ff526a',
+    LAVA: '#ff8738',
+    LAVA_LINE: '#b84b20',
+    WATER: '#59c9ff',
+    WATER_LINE: '#1b7aa8',
+    SAW: '#8f939b',
+    BG1: '#2a2831',
+    BG2: '#383541',
+    MUTED_LINE: '#8f877b',
+    FAINT_LINE: '#5e5965',
+  },
+};
+let INK = THEME_PALETTES.light.INK;
+let PAPER = THEME_PALETTES.light.PAPER;
+let ROPE = THEME_PALETTES.light.ROPE;
+let SPIKE = THEME_PALETTES.light.SPIKE;
+let LAVA = THEME_PALETTES.light.LAVA;
+let LAVA_LINE = THEME_PALETTES.light.LAVA_LINE;
+let WATER = THEME_PALETTES.light.WATER;
+let WATER_LINE = THEME_PALETTES.light.WATER_LINE;
+let SAW = THEME_PALETTES.light.SAW;
+let BG1 = THEME_PALETTES.light.BG1;
+let BG2 = THEME_PALETTES.light.BG2;
+let MUTED_LINE = THEME_PALETTES.light.MUTED_LINE;
+let FAINT_LINE = THEME_PALETTES.light.FAINT_LINE;
 const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
 const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 const SEED_STATS_KEY = 'ropeManSeedStatsV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
+const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
+const COLOR_THEME_KEY = 'ropeManColorThemeV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MAX_SEED_TEXT_LENGTH = 6;
@@ -168,6 +206,74 @@ function writeStorageJson(key, value) {
   }
 }
 
+function readStorageBoolean(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return raw === 'true';
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function writeStorageBoolean(key, value) {
+  try {
+    localStorage.setItem(key, value ? 'true' : 'false');
+  } catch (_) {
+    // Ignore private-mode/quota storage failures.
+  }
+}
+
+function readColorThemePreference() {
+  try {
+    return localStorage.getItem(COLOR_THEME_KEY) === 'dark' ? 'dark' : 'light';
+  } catch (_) {
+    return 'light';
+  }
+}
+
+function writeColorThemePreference(theme) {
+  try {
+    localStorage.setItem(COLOR_THEME_KEY, theme);
+  } catch (_) {
+    // Ignore private-mode/quota storage failures.
+  }
+}
+
+function applyVisualTheme(theme) {
+  const nextTheme = theme === 'dark' ? 'dark' : 'light';
+  const palette = THEME_PALETTES[nextTheme];
+  INK = palette.INK;
+  PAPER = palette.PAPER;
+  ROPE = palette.ROPE;
+  SPIKE = palette.SPIKE;
+  LAVA = palette.LAVA;
+  LAVA_LINE = palette.LAVA_LINE;
+  WATER = palette.WATER;
+  WATER_LINE = palette.WATER_LINE;
+  SAW = palette.SAW;
+  BG1 = palette.BG1;
+  BG2 = palette.BG2;
+  MUTED_LINE = palette.MUTED_LINE;
+  FAINT_LINE = palette.FAINT_LINE;
+  document.documentElement.dataset.theme = nextTheme;
+  if (document.body) document.body.dataset.theme = nextTheme;
+}
+
+function setSoundEnabled(enabled) {
+  soundEnabled = Boolean(enabled);
+  writeStorageBoolean(SOUND_ENABLED_KEY, soundEnabled);
+  if (!soundEnabled && typeof stopGameOverSound === 'function') stopGameOverSound();
+  if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
+}
+
+function setColorTheme(theme) {
+  colorTheme = theme === 'dark' ? 'dark' : 'light';
+  applyVisualTheme(colorTheme);
+  writeColorThemePreference(colorTheme);
+  if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
+}
+
 function loadOverallBestMeters() {
   return Math.max(readStorageNumber(BEST_SCORE_KEY), readStorageNumber(LEGACY_BEST_SCORE_KEY));
 }
@@ -202,6 +308,10 @@ function loadCharacterAppearance() {
 function saveCharacterAppearance() {
   writeStorageJson(CHARACTER_APPEARANCE_KEY, characterAppearance);
 }
+
+let soundEnabled = readStorageBoolean(SOUND_ENABLED_KEY, true);
+let colorTheme = readColorThemePreference();
+applyVisualTheme(colorTheme);
 
 const initialSearchParams = new URLSearchParams(window.location.search);
 const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));

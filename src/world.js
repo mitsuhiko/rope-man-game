@@ -12,7 +12,7 @@ function makeBgShape(x) {
     y: rand(80, Math.max(180, H - 120)),
     size: rand(18, 86),
     sides: Math.floor(rand(0, 4)),
-    shade: random() < 0.5 ? BG1 : BG2,
+    shadeIndex: random() < 0.5 ? 0 : 1,
     layer: random() < 0.55 ? 0.28 : 0.48,
     rot: rand(0, Math.PI),
   };
@@ -550,7 +550,7 @@ function drawBackground() {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(s.rot + time * 0.02 * (s.layer + 0.3));
-    ctx.strokeStyle = s.shade;
+    ctx.strokeStyle = s.shadeIndex === 0 ? BG1 : BG2;
     ctx.fillStyle = 'transparent';
     ctx.lineWidth = 2;
     if (s.sides === 0) {
@@ -672,7 +672,7 @@ function drawAnchors() {
     const hookHand = hookHandPosition();
     const d = hypot(focusedAnchor.x - player.x, focusedAnchor.y - player.y);
     ctx.save();
-    ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+    ctx.strokeStyle = d <= HOOK_RANGE ? ROPE : FAINT_LINE;
     ctx.globalAlpha = d <= HOOK_RANGE ? 0.85 : 0.35;
     const isLockedTarget = focusedAnchor === lockedAnchor;
     ctx.lineWidth = isLockedTarget ? 3 : 2;
@@ -683,7 +683,7 @@ function drawAnchors() {
     ctx.stroke();
     ctx.setLineDash([]);
     if (isLockedTarget) {
-      ctx.fillStyle = d <= HOOK_RANGE ? ROPE : '#bbbbbb';
+      ctx.fillStyle = d <= HOOK_RANGE ? ROPE : FAINT_LINE;
       ctx.beginPath();
       ctx.arc(sx(focusedAnchor.x), sy(focusedAnchor.y), 5, 0, Math.PI * 2);
       ctx.fill();
@@ -712,7 +712,7 @@ function drawGate(o) {
   ctx.fillStyle = PAPER;
   drawBar(x, -GATE_EXTENT, o.w, top + GATE_EXTENT);
   drawBar(x, bottom, o.w, GATE_EXTENT);
-  ctx.strokeStyle = '#777';
+  ctx.strokeStyle = MUTED_LINE;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(x - 14, sy(top));

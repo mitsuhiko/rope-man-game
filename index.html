@@ -13,6 +13,43 @@
       --spike: #d82424;
       --lava: #ff6a21;
       --water: #2f9bff;
+      --panel: rgba(255, 253, 247, 0.97);
+      --button-bg: rgba(255, 253, 247, 0.98);
+      --screen-bg:
+        radial-gradient(circle at 18% 20%, rgba(17, 17, 17, 0.05) 0 2px, transparent 2.5px),
+        linear-gradient(rgba(255, 253, 247, 0.78), rgba(255, 253, 247, 0.9));
+      --border-soft: rgba(17, 17, 17, 0.24);
+      --placeholder: rgba(17, 17, 17, 0.32);
+      --hud-bg: rgba(255, 253, 247, 0.94);
+      --score-faint: rgba(17, 17, 17, 0.58);
+      --touch-ink: rgba(0, 0, 0, 0.5);
+      --touch-line: rgba(0, 0, 0, 0.28);
+      --touch-bg: rgba(255, 253, 247, 0.04);
+      --focus-ring: rgba(139, 90, 43, 0.18);
+    }
+
+    :root[data-theme="dark"],
+    body[data-theme="dark"] {
+      --ink: #fff3df;
+      --paper: #111116;
+      --muted: #a69b8b;
+      --rope: #df9f56;
+      --spike: #ff526a;
+      --lava: #ff8738;
+      --water: #59c9ff;
+      --panel: rgba(22, 21, 28, 0.97);
+      --button-bg: rgba(28, 27, 36, 0.98);
+      --screen-bg:
+        radial-gradient(circle at 18% 20%, rgba(255, 243, 223, 0.08) 0 2px, transparent 2.5px),
+        linear-gradient(rgba(17, 17, 22, 0.84), rgba(17, 17, 22, 0.93));
+      --border-soft: rgba(255, 243, 223, 0.25);
+      --placeholder: rgba(255, 243, 223, 0.38);
+      --hud-bg: rgba(22, 21, 28, 0.92);
+      --score-faint: rgba(255, 243, 223, 0.58);
+      --touch-ink: rgba(255, 243, 223, 0.56);
+      --touch-line: rgba(255, 243, 223, 0.34);
+      --touch-bg: rgba(255, 243, 223, 0.05);
+      --focus-ring: rgba(223, 159, 86, 0.24);
     }
 
     html,
@@ -64,9 +101,7 @@
       align-items: center;
       justify-content: center;
       padding: calc(env(safe-area-inset-top, 0px) + 24px) calc(env(safe-area-inset-right, 0px) + 24px) calc(env(safe-area-inset-bottom, 0px) + 24px) calc(env(safe-area-inset-left, 0px) + 24px);
-      background:
-        radial-gradient(circle at 18% 20%, rgba(17, 17, 17, 0.05) 0 2px, transparent 2.5px),
-        linear-gradient(rgba(255, 253, 247, 0.78), rgba(255, 253, 247, 0.9));
+      background: var(--screen-bg);
       z-index: 5;
       pointer-events: auto;
       user-select: none;
@@ -92,7 +127,7 @@
       padding: clamp(24px, 3.8vw, 42px);
       border: 4px solid var(--ink);
       border-radius: clamp(22px, 2.6vw, 32px);
-      background: rgba(255, 253, 247, 0.97);
+      background: var(--panel);
       transform: rotate(-0.25deg);
       text-align: center;
     }
@@ -132,7 +167,7 @@
       padding: 0 clamp(18px, 3vw, 30px);
       border: 4px solid var(--ink);
       border-radius: clamp(13px, 1.5vw, 17px);
-      background: rgba(255, 253, 247, 0.98);
+      background: var(--button-bg);
       color: var(--ink);
       appearance: none;
       -webkit-appearance: none;
@@ -172,7 +207,7 @@
     .start-seed-form {
       margin: 0;
       padding-top: clamp(16px, 2.4vw, 22px);
-      border-top: 2px dashed rgba(17, 17, 17, 0.22);
+      border-top: 2px dashed var(--border-soft);
     }
 
     .start-label {
@@ -197,7 +232,7 @@
       height: clamp(50px, 5.2vw, 60px);
       border: 3px solid var(--ink);
       border-radius: clamp(13px, 1.5vw, 17px);
-      background: rgba(255, 253, 247, 0.98);
+      background: var(--button-bg);
       color: var(--ink);
       appearance: none;
       -webkit-appearance: none;
@@ -214,12 +249,12 @@
     }
 
     .start-seed-input::placeholder {
-      color: rgba(17, 17, 17, 0.32);
+      color: var(--placeholder);
     }
 
     .start-seed-input:focus {
       outline: none;
-      box-shadow: 0 0 0 3px rgba(139, 90, 43, 0.18);
+      box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
     .start-seed-input.is-invalid {
@@ -228,7 +263,12 @@
     }
 
     .start-seed-submit {
-      min-width: clamp(132px, 18vw, 178px);
+      flex: 0 0 clamp(50px, 5.2vw, 60px);
+      width: clamp(50px, 5.2vw, 60px);
+      min-width: 0;
+      padding: 0;
+      font-size: clamp(28px, 2.7vw, 36px);
+      letter-spacing: 0;
     }
 
     .start-seed-error {
@@ -248,7 +288,7 @@
       gap: 14px;
       margin-top: clamp(16px, 2.4vw, 22px);
       padding: 12px 14px;
-      border: 2px dashed rgba(17, 17, 17, 0.24);
+      border: 2px dashed var(--border-soft);
       border-radius: 16px;
       transform: rotate(0.35deg);
       text-align: left;
@@ -279,6 +319,28 @@
       border-radius: 12px;
       font-size: clamp(15px, 1.4vw, 18px);
       white-space: nowrap;
+    }
+
+    .start-settings {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      transform: rotate(-0.2deg);
+    }
+
+    .start-toggle {
+      min-height: 40px;
+      padding: 0 12px;
+      border-width: 3px;
+      border-radius: 12px;
+      font-size: clamp(14px, 1.25vw, 17px);
+      letter-spacing: -0.04em;
+    }
+
+    .start-toggle[aria-pressed="true"] {
+      background: var(--ink);
+      color: var(--paper);
     }
 
     .start-customization-menu {
@@ -338,7 +400,7 @@
       padding: 8px 7px 7px;
       border: 3px solid var(--ink);
       border-radius: 14px;
-      background: rgba(255, 253, 247, 0.98);
+      background: var(--button-bg);
       color: var(--ink);
       appearance: none;
       -webkit-appearance: none;
@@ -403,7 +465,7 @@
       padding: clamp(7px, 1vw, 13px) clamp(9px, 1.2vw, 16px);
       border: solid var(--ink);
       border-width: 0 0 3px 3px;
-      background: rgba(255, 253, 247, 0.94);
+      background: var(--hud-bg);
       pointer-events: none;
       user-select: none;
       z-index: 2;
@@ -435,7 +497,7 @@
     }
 
     .score-attempts {
-      color: rgba(17, 17, 17, 0.58);
+      color: var(--score-faint);
     }
 
     .score-seed {
@@ -464,10 +526,10 @@
       width: clamp(112px, 26vmin, 168px);
       height: clamp(112px, 26vmin, 168px);
       box-sizing: border-box;
-      border: 3px solid rgba(0, 0, 0, 0.5);
+      border: 3px solid var(--touch-ink);
       border-radius: 50%;
-      background: rgba(255, 253, 247, 0.04);
-      color: rgba(0, 0, 0, 0.5);
+      background: var(--touch-bg);
+      color: var(--touch-ink);
       pointer-events: auto;
       touch-action: manipulation;
       touch-action: none;
@@ -486,7 +548,7 @@
       content: "";
       position: absolute;
       inset: 23%;
-      border: 2px dashed rgba(0, 0, 0, 0.42);
+      border: 2px dashed var(--touch-line);
       border-radius: 50%;
     }
 
@@ -505,8 +567,8 @@
     }
 
     .touch-action:active {
-      background: rgba(0, 0, 0, 0.05);
-      border-color: rgba(0, 0, 0, 0.62);
+      background: var(--touch-bg);
+      border-color: var(--ink);
     }
 
     .touch-joystick {
@@ -524,7 +586,7 @@
       left: 18%;
       right: 18%;
       top: 50%;
-      border-top: 2px solid rgba(0, 0, 0, 0.28);
+      border-top: 2px solid var(--touch-line);
       transform: translateY(-50%);
     }
 
@@ -532,14 +594,14 @@
       top: 18%;
       bottom: 18%;
       left: 50%;
-      border-left: 2px solid rgba(0, 0, 0, 0.28);
+      border-left: 2px solid var(--touch-line);
       transform: translateX(-50%);
     }
 
     .touch-joystick-deadzone {
       position: absolute;
       inset: 34%;
-      border: 2px solid rgba(0, 0, 0, 0.34);
+      border: 2px solid var(--touch-line);
       border-radius: 50%;
       pointer-events: none;
     }
@@ -551,16 +613,16 @@
       width: 35%;
       height: 35%;
       box-sizing: border-box;
-      border: 3px solid rgba(0, 0, 0, 0.5);
+      border: 3px solid var(--touch-ink);
       border-radius: 50%;
-      background: rgba(255, 253, 247, 0.04);
+      background: var(--touch-bg);
       pointer-events: none;
       transform: translate(-50%, -50%);
       transition: transform 0.08s ease-out;
     }
 
     .touch-joystick.is-active .touch-stick {
-      border-color: rgba(0, 0, 0, 0.65);
+      border-color: var(--ink);
       transition: none;
     }
 
@@ -574,7 +636,7 @@
       padding: clamp(22px, 3vw, 34px);
       border: 4px solid var(--ink);
       border-radius: clamp(18px, 2vw, 26px);
-      background: rgba(255, 253, 247, 0.96);
+      background: var(--panel);
       transform: translate(-50%, -50%) rotate(-0.2deg);
       z-index: 4;
       pointer-events: none;
@@ -643,7 +705,7 @@
       padding: 0 clamp(20px, 3vw, 32px);
       border: 4px solid var(--ink);
       border-radius: clamp(12px, 1.5vw, 16px);
-      background: rgba(255, 253, 247, 0.98);
+      background: var(--button-bg);
       color: var(--ink);
       appearance: none;
       -webkit-appearance: none;
@@ -670,7 +732,7 @@
 
     .crash-button:hover,
     .crash-button:focus-visible {
-      background: rgba(255, 253, 247, 1);
+      background: var(--paper);
       transform: translateY(-2px) rotate(0.35deg);
       outline: none;
     }
@@ -730,13 +792,20 @@
         padding: 0 14px;
         font-size: clamp(22px, 6vw, 28px);
       }
-      .start-seed-row,
       .start-character-teaser {
         flex-direction: column;
       }
-      .start-seed-submit,
+      .start-seed-submit {
+        flex-basis: 48px;
+        width: 48px;
+        font-size: 32px;
+      }
       .start-button--ghost {
         width: 100%;
+      }
+      .start-toggle {
+        min-height: 44px;
+        font-size: clamp(14px, 4vw, 18px);
       }
       .start-character-teaser {
         align-items: stretch;
@@ -806,7 +875,7 @@
             <label class="start-label" for="start-seed-input">map seed</label>
             <div class="start-seed-row">
               <input id="start-seed-input" class="start-seed-input" name="seed" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="6" pattern="[0-9A-Za-z]{1,6}" aria-describedby="start-seed-error" />
-              <button id="start-seed-submit" class="start-button start-seed-submit" type="button">randomize</button>
+              <button id="start-seed-submit" class="start-button start-seed-submit" type="button" aria-label="randomize seed" title="randomize seed">↺</button>
             </div>
             <p id="start-seed-error" class="start-seed-error" aria-live="polite"></p>
           </form>
@@ -817,6 +886,10 @@
             <span id="start-character-selection" class="start-character-note">hat: none</span>
           </div>
           <button id="start-customize-open" class="start-button start-button--ghost" type="button" aria-controls="start-customization-menu" aria-expanded="false">customize</button>
+        </div>
+        <div class="start-settings" aria-label="Game settings">
+          <button id="start-sound-toggle" class="start-button start-toggle" type="button" aria-pressed="true">sound on</button>
+          <button id="start-theme-toggle" class="start-button start-toggle" type="button" aria-pressed="false">light mode</button>
         </div>
       </div>
       <section id="start-customization-menu" class="start-panel start-customization-menu" aria-labelledby="customization-title" hidden>

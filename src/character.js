@@ -131,8 +131,8 @@ function drawRopeAndPlayer() {
     ctx.lineTo(sx(notchX), sy(notchY));
     ctx.stroke();
 
-    ctx.fillStyle = '#777777';
-    ctx.strokeStyle = '#777777';
+    ctx.fillStyle = MUTED_LINE;
+    ctx.strokeStyle = MUTED_LINE;
     ctx.globalAlpha = 0.95;
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';

@@ -12,6 +12,29 @@ function setStartScreenVisible(visible) {
   if (startScreenEl) startScreenEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
 }
 
+function updateStartSettingsUi() {
+  if (startSoundToggleEl) {
+    startSoundToggleEl.textContent = soundEnabled ? 'sound on' : 'sound off';
+    startSoundToggleEl.setAttribute('aria-pressed', soundEnabled ? 'true' : 'false');
+  }
+  if (startThemeToggleEl) {
+    const isDark = colorTheme === 'dark';
+    startThemeToggleEl.textContent = isDark ? 'dark mode' : 'light mode';
+    startThemeToggleEl.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+  }
+}
+
+function toggleSoundSetting() {
+  const nextEnabled = !soundEnabled;
+  setSoundEnabled(nextEnabled);
+  if (nextEnabled) primeGameAudio();
+}
+
+function toggleThemeSetting() {
+  setColorTheme(colorTheme === 'dark' ? 'light' : 'dark');
+  if (startHatGridEl && startHatGridEl.children.length) renderHatChoices();
+}
+
 function startGameWithSeed(seedValue) {
   primeGameAudio();
   setStartSeedError('');
@@ -165,6 +188,9 @@ function setupStartControls() {
   setStartScreenVisible(!gameStarted);
   bindStartButton(startRandomEl, startSpecificSeed);
   bindStartButton(startSeedSubmitEl, randomizeStartSeed);
+  bindStartButton(startSoundToggleEl, toggleSoundSetting);
+  bindStartButton(startThemeToggleEl, toggleThemeSetting);
+  updateStartSettingsUi();
   setupCustomizationControls();
 
   if (startSeedFormEl) {

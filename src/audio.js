@@ -29,6 +29,7 @@ function decodeAudioBuffer(context, data) {
 }
 
 function startGameAudioLoad() {
+  if (!soundEnabled) return audioContext;
   const context = createAudioContext();
   if (!context || audioLoadStarted) return context;
   audioLoadStarted = true;
@@ -51,7 +52,7 @@ function startGameAudioLoad() {
 }
 
 function primeGameAudio() {
-  if (gameAudioPrimed) return;
+  if (!soundEnabled || gameAudioPrimed) return;
   const context = startGameAudioLoad();
   if (!context) return;
   gameAudioPrimed = true;
@@ -66,6 +67,7 @@ function primeGameAudio() {
 }
 
 function playBufferedSound(name) {
+  if (!soundEnabled) return null;
   const context = startGameAudioLoad();
   const buffer = audioBuffers[name];
   if (!context || !buffer) return null;

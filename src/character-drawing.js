@@ -102,8 +102,9 @@ function rgbFromHexColor(color) {
 }
 
 function paperTintedAccessoryCanvas(hatId, img) {
+  const ink = rgbFromHexColor(INK);
   const paper = rgbFromHexColor(PAPER);
-  const key = `${hatId}:${img.naturalWidth}x${img.naturalHeight}:${paper.r},${paper.g},${paper.b}`;
+  const key = `${hatId}:${img.naturalWidth}x${img.naturalHeight}:${ink.r},${ink.g},${ink.b}:${paper.r},${paper.g},${paper.b}`;
   if (characterAccessoryPaperCanvases[key]) return characterAccessoryPaperCanvases[key];
 
   const canvas = document.createElement('canvas');
@@ -117,9 +118,10 @@ function paperTintedAccessoryCanvas(hatId, img) {
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] === 0) continue;
     const shade = (data[i] + data[i + 1] + data[i + 2]) / (255 * 3);
-    data[i] = Math.round(paper.r * shade);
-    data[i + 1] = Math.round(paper.g * shade);
-    data[i + 2] = Math.round(paper.b * shade);
+    const inverseShade = 1 - shade;
+    data[i] = Math.round(ink.r * inverseShade + paper.r * shade);
+    data[i + 1] = Math.round(ink.g * inverseShade + paper.g * shade);
+    data[i + 2] = Math.round(ink.b * inverseShade + paper.b * shade);
   }
   tintCtx.putImageData(imageData, 0, 0);
 
