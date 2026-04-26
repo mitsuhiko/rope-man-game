@@ -38,11 +38,15 @@ function toggleThemeSetting() {
   if (startHatGridEl && startHatGridEl.children.length) renderHatChoices();
 }
 
+let highScoreSortMode = 'score';
+
 function startGameWithSeed(seedValue) {
   primeGameAudio();
   setStartSeedError('');
   setGameSeed(seedValue);
+  if (startSeedInputEl) startSeedInputEl.value = gameSeedText;
   setCustomizationMenuVisible(false, { restoreFocus: false });
+  setHighScoreMenuVisible(false, { restoreFocus: false });
   gameStarted = true;
   setStartScreenVisible(false);
   reset();
@@ -178,6 +182,118 @@ function renderHatChoices() {
   syncCustomizationUi();
 }
 
+function rankedSeedStats(mode) {
+  return Object.entries(seedStats)
+    .map(([seed, raw]) => ({
+      seed,
+      best: Math.max(0, Math.floor(Number(raw && raw.best) || 0)),
+      attempts: Math.max(0, Math.floor(Number(raw && raw.attempts) || 0)),
+    }))
+    .filter((entry) => entry.best > 0 || entry.attempts > 0)
+    .sort((a, b) => {
+      if (mode === 'attempts') {
+        return (b.attempts - a.attempts) || (b.best - a.best) || a.seed.localeCompare(b.seed);
+      }
+      return (b.best - a.best) || (b.attempts - a.attempts) || a.seed.localeCompare(b.seed);
+    })
+    .slice(0, 20);
+}
+
+function setHighScoreSortMode(mode) {
+  highScoreSortMode = mode === 'attempts' ? 'attempts' : 'score';
+  if (startScoresByScoreEl) {
+    const selected = highScoreSortMode === 'score';
+    startScoresByScoreEl.classList.toggle('is-selected', selected);
+    startScoresByScoreEl.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  }
+  if (startScoresByAttemptsEl) {
+    const selected = highScoreSortMode === 'attempts';
+    startScoresByAttemptsEl.classList.toggle('is-selected', selected);
+    startScoresByAttemptsEl.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  }
+  renderHighScoreList();
+}
+
+function makeHighScoreItem(entry, index) {
+  const attemptText = entry.attempts === 1 ? '1 attempt' : `${entry.attempts} attempts`;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'high-score-item';
+  button.dataset.seed = entry.seed;
+  button.setAttribute('aria-label', `play seed ${entry.seed}, best ${entry.best} meters, ${attemptText}`);
+
+  const rank = document.createElement('span');
+  rank.className = 'high-score-rank';
+  rank.textContent = `#${index + 1}`;
+
+  const seedWrap = document.createElement('span');
+  const seedLabel = document.createElement('span');
+  seedLabel.className = 'high-score-seed-label';
+  seedLabel.textContent = 'seed';
+  const seedText = document.createElement('span');
+  seedText.className = 'high-score-seed';
+  seedText.textContent = entry.seed;
+  seedWrap.append(seedLabel, seedText);
+
+  const metrics = document.createElement('span');
+  metrics.className = 'high-score-metrics';
+  const best = document.createElement('span');
+  best.textContent = `${entry.best}m best`;
+  const attempts = document.createElement('span');
+  attempts.textContent = attemptText;
+  metrics.append(best, attempts);
+
+  button.append(rank, seedWrap, metrics);
+  bindHatChoiceButton(button, () => startGameWithSeed(seedValueFromText(entry.seed)));
+  return button;
+}
+
+function renderHighScoreList() {
+  if (!startScoresListEl) return;
+  const entries = rankedSeedStats(highScoreSortMode);
+  if (!entries.length) {
+    const empty = document.createElement('div');
+    empty.className = 'high-score-empty';
+    empty.textContent = 'No saved maps yet. Crash heroically, then come back.';
+    startScoresListEl.replaceChildren(empty);
+    return;
+  }
+  startScoresListEl.replaceChildren(...entries.map(makeHighScoreItem));
+}
+
+function setHighScoreMenuVisible(visible, options = {}) {
+  const { restoreFocus = true, showMain = true } = options;
+  if (!startScoresMenuEl) return;
+
+  if (visible) {
+    if (startCustomizationMenuEl) {
+      startCustomizationMenuEl.hidden = true;
+      startCustomizationMenuEl.setAttribute('aria-hidden', 'true');
+    }
+    if (startCustomizeOpenEl) startCustomizeOpenEl.setAttribute('aria-expanded', 'false');
+    setHighScoreSortMode(highScoreSortMode);
+  }
+
+  if (startMainPanelEl && (visible || showMain)) startMainPanelEl.hidden = visible;
+  startScoresMenuEl.hidden = !visible;
+  startScoresMenuEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  if (startScreenEl) startScreenEl.scrollTop = 0;
+  if (startScoresOpenEl) startScoresOpenEl.setAttribute('aria-expanded', visible ? 'true' : 'false');
+
+  if (visible) {
+    focusWithoutScroll(highScoreSortMode === 'attempts' ? startScoresByAttemptsEl : startScoresByScoreEl);
+  } else if (restoreFocus) {
+    focusWithoutScroll(startScoresOpenEl);
+  }
+}
+
+function setupHighScoreControls() {
+  bindStartButton(startScoresOpenEl, () => setHighScoreMenuVisible(true));
+  bindStartButton(startScoresCloseEl, () => setHighScoreMenuVisible(false));
+  bindStartButton(startScoresByScoreEl, () => setHighScoreSortMode('score'));
+  bindStartButton(startScoresByAttemptsEl, () => setHighScoreSortMode('attempts'));
+}
+
 function focusWithoutScroll(element) {
   if (!element) return;
   try {
@@ -190,6 +306,7 @@ function focusWithoutScroll(element) {
 function setCustomizationMenuVisible(visible, options = {}) {
   const { restoreFocus = true } = options;
   if (!startCustomizationMenuEl) return;
+  if (visible) setHighScoreMenuVisible(false, { restoreFocus: false, showMain: false });
   if (visible && startHatGridEl && !startHatGridEl.children.length) renderHatChoices();
   if (startMainPanelEl) startMainPanelEl.hidden = visible;
   startCustomizationMenuEl.hidden = !visible;
@@ -223,6 +340,7 @@ function setupStartControls() {
   bindStartButton(startThemeToggleEl, toggleThemeSetting);
   updateStartSettingsUi();
   setupCustomizationControls();
+  setupHighScoreControls();
 
   if (startSeedFormEl) {
     startSeedFormEl.addEventListener('submit', (e) => {
@@ -241,6 +359,7 @@ function returnToMainMenu() {
   gamePaused = false;
   setCrashActionsVisible(false);
   setCustomizationMenuVisible(false, { restoreFocus: false });
+  setHighScoreMenuVisible(false, { restoreFocus: false });
   setStartScreenVisible(true);
   setStartSeedError('');
   resetJoystickInput();
