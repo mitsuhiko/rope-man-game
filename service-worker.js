@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v4';
+const CACHE_NAME = 'rope-man-app-v5';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -28,11 +28,11 @@ const CORE_ASSETS = [
   "assets/hats/bonnet.png",
   "assets/hats/bucket-hat.png",
   "assets/hats/bushy-mustache.png",
-  "assets/hats/chin-mask.png",
   "assets/hats/cowboy-hat.png",
   "assets/hats/crown.png",
   "assets/hats/curled-mustache.png",
   "assets/hats/curly-hair.png",
+  "assets/hats/darth-vader-mask.png",
   "assets/hats/dreadlocks.png",
   "assets/hats/feather-headband.png",
   "assets/hats/flame-hair.png",
@@ -41,7 +41,6 @@ const CORE_ASSETS = [
   "assets/hats/full-beard.png",
   "assets/hats/gentleman-mustache.png",
   "assets/hats/goatee.png",
-  "assets/hats/grand-mustache-goatee.png",
   "assets/hats/halo.png",
   "assets/hats/handlebar-mustache.png",
   "assets/hats/headset.png",
