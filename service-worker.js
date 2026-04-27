@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v10';
+const CACHE_NAME = 'rope-man-app-v11';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -123,7 +123,11 @@ async function refreshAsset(cache, asset) {
 
   const cached = await cache.match(url);
   const changed = await responsesDiffer(cached, fresh.clone());
-  await cache.put(url, fresh);
+  try {
+    await cache.put(url, fresh);
+  } catch (_) {
+    // Cache quota failures should not make update checks fail.
+  }
   return changed;
 }
 
@@ -139,27 +143,42 @@ async function cacheCoreAssets() {
 }
 
 async function networkFirstNavigation(request) {
-  const cache = await caches.open(CACHE_NAME);
+  let cache = null;
+  try { cache = await caches.open(CACHE_NAME); } catch (_) {}
+
   try {
     const fresh = await fetch(request);
-    if (fresh && fresh.ok) {
-      await cache.put(appUrl('./'), fresh.clone());
+    if (cache && fresh && fresh.ok) {
+      try {
+        await cache.put(appUrl('./'), fresh.clone());
+      } catch (_) {
+        // Keep serving the network response even if Cache Storage is full.
+      }
     }
     return fresh;
   } catch (_) {
-    return (
+    const cached = cache && (
       await cache.match(request) ||
       await cache.match(appUrl('./')) ||
       await cache.match(appUrl('index.html'))
     );
+    return cached || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
 }
 
 async function cacheFirstAsset(request, event) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
-  const fresh = fetch(request).then((response) => {
-    if (response && response.ok) return cache.put(request, response.clone()).then(() => response);
+  let cache = null;
+  try { cache = await caches.open(CACHE_NAME); } catch (_) {}
+
+  const cached = cache ? await cache.match(request) : null;
+  const fresh = fetch(request).then(async (response) => {
+    if (cache && response && response.ok) {
+      try {
+        await cache.put(request, response.clone());
+      } catch (_) {
+        // Cache quota failures should not break the request.
+      }
+    }
     return response;
   });
 
@@ -169,8 +188,11 @@ async function cacheFirstAsset(request, event) {
   }
 
   return fresh.catch(async () => {
-    if (request.destination === 'document') return cache.match(appUrl('./'));
-    return undefined;
+    if (cache && request.destination === 'document') {
+      const fallback = await cache.match(appUrl('./')) || await cache.match(appUrl('index.html'));
+      if (fallback) return fallback;
+    }
+    return new Response('', { status: 504, statusText: 'Gateway Timeout' });
   });
 }
 

@@ -123,6 +123,7 @@ const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
 const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 const SEED_STATS_KEY = 'ropeManSeedStatsV1';
 const SEED_REPLAYS_KEY = 'ropeManSeedReplaysV1';
+const LEGACY_SESSION_SEED_REPLAYS_KEY = 'ropeManSeedSessionReplaysV1';
 const GAME_MODE_KEY = 'ropeManGameModeV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
@@ -475,8 +476,51 @@ function emptySeedReplayStore() {
   return store;
 }
 
-function loadSeedReplayStore() {
-  const raw = readStorageJson(SEED_REPLAYS_KEY, {});
+function replayPersistScore(replay) {
+  if (!replay) return 0;
+  const scores = [
+    replay.finalScore,
+    replay.crash && replay.crash.runFinalScore,
+    replay.crash && replay.crash.scoreMeters,
+  ].map(value => Number(value)).filter(Number.isFinite);
+  return Math.max(0, ...scores);
+}
+
+function replayPersistMaxX(replay) {
+  return Math.max(0, Number(replay && replay.maxX) || 0);
+}
+
+function bestReplayFromList(replays) {
+  let bestReplay = null;
+  let bestScore = -Infinity;
+  let bestMaxX = -Infinity;
+  for (const replay of Array.isArray(replays) ? replays : []) {
+    const score = replayPersistScore(replay);
+    const maxX = replayPersistMaxX(replay);
+    if (!bestReplay || score > bestScore || (score === bestScore && maxX >= bestMaxX)) {
+      bestReplay = replay;
+      bestScore = score;
+      bestMaxX = maxX;
+    }
+  }
+  return bestReplay;
+}
+
+function assignReplayList(store, mode, seed, replays, options = {}) {
+  if (!GAME_MODES[mode] || !/^[0-9A-Za-z]{1,6}$/.test(seed)) return;
+  const filtered = filterReplayList(seed, replays);
+  if (!filtered.length) return;
+
+  if (options.bestOnly) {
+    const bestReplay = bestReplayFromList(filtered);
+    if (bestReplay) store[mode][seed] = [bestReplay];
+    return;
+  }
+
+  store[mode][seed] = filtered;
+}
+
+function loadReplayStoreFromRaw(raw, options = {}) {
   const store = emptySeedReplayStore();
   if (!raw || typeof raw !== 'object') return store;
 
@@ -484,53 +528,121 @@ function loadSeedReplayStore() {
   if (looksModeScoped) {
     for (const mode of GAME_MODE_ORDER) {
       for (const [seed, replays] of Object.entries(raw[mode] || {})) {
-        if (!/^[0-9A-Za-z]{1,6}$/.test(seed)) continue;
-        const filtered = filterReplayList(seed, replays);
-        if (filtered.length) store[mode][seed] = filtered;
+        assignReplayList(store, mode, seed, replays, options);
       }
     }
   } else {
     // Migration: all existing replays were recorded in the original free-roam mode.
     for (const [seed, replays] of Object.entries(raw)) {
-      if (!/^[0-9A-Za-z]{1,6}$/.test(seed)) continue;
-      const filtered = filterReplayList(seed, replays);
-      if (filtered.length) store.freeRoam[seed] = filtered;
+      assignReplayList(store, 'freeRoam', seed, replays, options);
     }
   }
   return store;
 }
 
-function pruneSeedReplayStore() {
+function loadSeedReplayStore() {
+  return loadReplayStoreFromRaw(readStorageJson(SEED_REPLAYS_KEY, {}), { bestOnly: true });
+}
+
+function clearLegacySessionReplayStore() {
+  try {
+    sessionStorage.removeItem(LEGACY_SESSION_SEED_REPLAYS_KEY);
+  } catch (_) {
+    // Ignore private-mode/session storage failures.
+  }
+}
+
+function replayStoreIsEmpty(store) {
+  for (const mode of GAME_MODE_ORDER) {
+    if (store && Object.keys(store[mode] || {}).length) return false;
+  }
+  return true;
+}
+
+function bestOnlyReplayStore(store) {
+  const bestOnly = emptySeedReplayStore();
+  for (const mode of GAME_MODE_ORDER) {
+    for (const [seed, replays] of Object.entries((store && store[mode]) || {})) {
+      assignReplayList(bestOnly, mode, seed, replays, { bestOnly: true });
+    }
+  }
+  return bestOnly;
+}
+
+function pruneSeedReplayStore(store) {
+  if (!store) return;
   const retainedSeeds = highScoreBoardSeedSet();
-  for (const mode of Object.keys(seedReplayStore)) {
-    for (const seed of Object.keys(seedReplayStore[mode] || {})) {
-      if (!retainedSeeds.has(`${mode}:${seed}`)) delete seedReplayStore[mode][seed];
+  for (const mode of Object.keys(store)) {
+    for (const seed of Object.keys(store[mode] || {})) {
+      if (!retainedSeeds.has(`${mode}:${seed}`)) delete store[mode][seed];
     }
   }
 }
 
-function writeSeedReplayStore() {
-  pruneSeedReplayStore();
+function writeSeedReplayStore(options = {}) {
+  const { warn = true } = options;
+  pruneSeedReplayStore(seedReplayStore);
+  seedReplayStore = bestOnlyReplayStore(seedReplayStore);
   try {
-    localStorage.setItem(SEED_REPLAYS_KEY, JSON.stringify(seedReplayStore));
+    if (replayStoreIsEmpty(seedReplayStore)) {
+      localStorage.removeItem(SEED_REPLAYS_KEY);
+      return true;
+    }
+
+    const serialized = JSON.stringify(seedReplayStore);
+    try {
+      localStorage.setItem(SEED_REPLAYS_KEY, serialized);
+    } catch (_) {
+      // If the old all-replays value filled localStorage, remove it and retry
+      // with the best-only replacement.
+      localStorage.removeItem(SEED_REPLAYS_KEY);
+      localStorage.setItem(SEED_REPLAYS_KEY, serialized);
+    }
+    return true;
   } catch (err) {
-    console.warn('[replay] could not persist replay history', err);
+    try { localStorage.removeItem(SEED_REPLAYS_KEY); } catch (_) {}
+    if (warn) console.warn('[replay] could not persist best replay', err);
+    return false;
   }
 }
 
-function storedReplaysForSeed(seedText) {
-  const replays = seedReplayStore[gameMode] && seedReplayStore[gameMode][seedText];
+function storedReplayListForSeed(store, seedText) {
+  const replays = store && store[gameMode] && store[gameMode][seedText];
   return Array.isArray(replays) ? replays : [];
+}
+
+function storedReplaysForSeed(seedText) {
+  return storedReplayListForSeed(seedReplayStore, seedText)
+    .concat(storedReplayListForSeed(memorySeedReplayStore, seedText));
 }
 
 function saveCurrentSeedReplayHistory() {
   if (!seedReplayStore[gameMode]) seedReplayStore[gameMode] = {};
-  if (seedCrashReplays.length) {
-    seedReplayStore[gameMode][gameSeedText] = seedCrashReplays;
+  if (!memorySeedReplayStore[gameMode]) memorySeedReplayStore[gameMode] = {};
+
+  const validReplays = filterReplayList(gameSeedText, seedCrashReplays)
+    .filter((replay) => normalizeGameMode(replay.gameMode || DEFAULT_GAME_MODE) === gameMode);
+  const bestReplay = bestReplayFromList(validReplays);
+  if (bestReplay) {
+    seedReplayStore[gameMode][gameSeedText] = [bestReplay];
   } else {
     delete seedReplayStore[gameMode][gameSeedText];
   }
-  writeSeedReplayStore();
+
+  const wroteLocalBest = writeSeedReplayStore();
+  if (!wroteLocalBest) delete seedReplayStore[gameMode][gameSeedText];
+
+  // Everything that is not safely persisted stays in memory only.  If the
+  // best replay cannot fit in localStorage, keep it in memory too until reload.
+  const localBest = wroteLocalBest ? storedReplayListForSeed(seedReplayStore, gameSeedText)[0] || null : null;
+  const memoryReplays = bestReplay && localBest === bestReplay
+    ? validReplays.filter((replay) => replay !== bestReplay)
+    : validReplays;
+  if (memoryReplays.length) {
+    memorySeedReplayStore[gameMode][gameSeedText] = memoryReplays;
+  } else {
+    delete memorySeedReplayStore[gameMode][gameSeedText];
+  }
 }
 
 function saveCharacterAppearance() {
@@ -555,6 +667,10 @@ let seedStatsByMode = loadSeedStatsByMode();
 let seedStats = seedStatsByMode[gameMode] || (seedStatsByMode[gameMode] = {});
 let best = overallBestForMode(gameMode);
 let seedReplayStore = loadSeedReplayStore();
+let memorySeedReplayStore = emptySeedReplayStore();
+clearLegacySessionReplayStore();
+// One startup compaction for old builds that stored every replay in localStorage.
+writeSeedReplayStore({ warn: false });
 let seedBest = 0;
 let seedAttempts = 0;
 let runStartBest = best;
@@ -582,7 +698,6 @@ function persistCurrentSeedStats() {
   seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
   seedStatsByMode[gameMode] = seedStats;
   writeStorageJson(SEED_STATS_KEY, seedStatsByMode);
-  if (typeof seedReplayStore !== 'undefined') writeSeedReplayStore();
 }
 
 function setGameMode(mode, options = {}) {
