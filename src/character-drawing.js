@@ -15,7 +15,7 @@ const CHARACTER_HATS = {
   crown: { src: 'assets/hats/crown.png', label: 'crown', width: 40, height: 30, up: 18, side: 0 },
   'curled-mustache': { src: 'assets/hats/curled-mustache.png', label: 'curled mustache', width: 42, height: 16, up: -7, side: 0 },
   'curly-hair': { src: 'assets/hats/curly-hair.png', label: 'curly hair', width: 48, height: 38, up: 12, side: 0 },
-  'darth-vader-mask': { src: 'assets/hats/darth-vader-mask.png', label: 'vader mask', width: 48, height: 46, up: -7, side: 0 },
+  'darth-vader-mask': { src: 'assets/hats/darth-vader-mask.png', label: 'vader mask', width: 54, height: 48, up: 0, side: 0 },
   dreadlocks: { src: 'assets/hats/dreadlocks.png', label: 'dreadlocks', width: 38, height: 46, up: 0, side: 0 },
   'feather-headband': { src: 'assets/hats/feather-headband.png', label: 'feather headband', width: 35, height: 34, up: 8, side: 0 },
   flame: { src: 'assets/hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },

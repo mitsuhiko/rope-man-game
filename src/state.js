@@ -120,6 +120,7 @@ let FAINT_LINE = THEME_PALETTES.light.FAINT_LINE;
 const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
 const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 const SEED_STATS_KEY = 'ropeManSeedStatsV1';
+const SEED_REPLAYS_KEY = 'ropeManSeedReplaysV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
 const COLOR_THEME_KEY = 'ropeManColorThemeV1';
@@ -129,6 +130,7 @@ const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRS
 const MAX_SEED_TEXT_LENGTH = 6;
 const MAX_SEED_VALUE = 0xffffffff;
 const DEFAULT_RNG_SEED = 0x6d2b79f5;
+const REPLAY_FORMAT_VERSION = 1;
 
 function normalizeSeedValue(value) {
   value >>>= 0;
@@ -311,6 +313,30 @@ function loadOverallBestMeters() {
   return Math.max(readStorageNumber(BEST_SCORE_KEY), readStorageNumber(LEGACY_BEST_SCORE_KEY));
 }
 
+function rankedSeedStatEntries(mode, limit = 20) {
+  return Object.entries(seedStats)
+    .map(([seed, raw]) => ({
+      seed,
+      best: Math.max(0, Math.floor(Number(raw && raw.best) || 0)),
+      attempts: Math.max(0, Math.floor(Number(raw && raw.attempts) || 0)),
+    }))
+    .filter((entry) => entry.best > 0 || entry.attempts > 0)
+    .sort((a, b) => {
+      if (mode === 'attempts') {
+        return (b.attempts - a.attempts) || (b.best - a.best) || a.seed.localeCompare(b.seed);
+      }
+      return (b.best - a.best) || (b.attempts - a.attempts) || a.seed.localeCompare(b.seed);
+    })
+    .slice(0, limit);
+}
+
+function highScoreBoardSeedSet() {
+  return new Set([
+    ...rankedSeedStatEntries('score').map((entry) => entry.seed),
+    ...rankedSeedStatEntries('attempts').map((entry) => entry.seed),
+  ]);
+}
+
 function loadSeedStats() {
   const rawStats = readStorageJson(SEED_STATS_KEY, {});
   const stats = {};
@@ -363,6 +389,55 @@ function loadCharacterAppearance() {
   };
 }
 
+function loadSeedReplayStore() {
+  const raw = readStorageJson(SEED_REPLAYS_KEY, {});
+  const store = {};
+  if (!raw || typeof raw !== 'object') return store;
+
+  for (const [seed, replays] of Object.entries(raw)) {
+    if (!/^[0-9A-Za-z]{1,6}$/.test(seed) || !Array.isArray(replays)) continue;
+    store[seed] = replays.filter((replay) => (
+      replay &&
+      replay.version === REPLAY_FORMAT_VERSION &&
+      replay.seedText === seed &&
+      Array.isArray(replay.frames) &&
+      replay.frames.length > 0
+    ));
+    if (!store[seed].length) delete store[seed];
+  }
+  return store;
+}
+
+function pruneSeedReplayStore() {
+  const retainedSeeds = highScoreBoardSeedSet();
+  for (const seed of Object.keys(seedReplayStore)) {
+    if (!retainedSeeds.has(seed)) delete seedReplayStore[seed];
+  }
+}
+
+function writeSeedReplayStore() {
+  pruneSeedReplayStore();
+  try {
+    localStorage.setItem(SEED_REPLAYS_KEY, JSON.stringify(seedReplayStore));
+  } catch (err) {
+    console.warn('[replay] could not persist replay history', err);
+  }
+}
+
+function storedReplaysForSeed(seedText) {
+  const replays = seedReplayStore[seedText];
+  return Array.isArray(replays) ? replays : [];
+}
+
+function saveCurrentSeedReplayHistory() {
+  if (seedCrashReplays.length) {
+    seedReplayStore[gameSeedText] = seedCrashReplays;
+  } else {
+    delete seedReplayStore[gameSeedText];
+  }
+  writeSeedReplayStore();
+}
+
 function saveCharacterAppearance() {
   writeStorageJson(CHARACTER_APPEARANCE_KEY, characterAppearance);
 }
@@ -382,6 +457,7 @@ let gameStarted = false;
 let scoreMeters = 0;
 let best = loadOverallBestMeters();
 let seedStats = loadSeedStats();
+let seedReplayStore = loadSeedReplayStore();
 let seedBest = 0;
 let seedAttempts = 0;
 let runStartBest = best;
@@ -408,6 +484,7 @@ function syncCurrentSeedStats() {
 function persistCurrentSeedStats() {
   seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
   writeStorageJson(SEED_STATS_KEY, seedStats);
+  if (typeof seedReplayStore !== 'undefined') writeSeedReplayStore();
 }
 
 function updateScoreHud() {
@@ -542,13 +619,12 @@ let cameraVX = 0;
 let cameraVY = 0;
 let gameOver = false;
 let gamePaused = false;
-const REPLAY_FORMAT_VERSION = 1;
 let replayMode = false;
 let activeReplayRecording = null;
 let activeReplayPlayback = null;
 let replayInputOverride = null;
-let seedCrashReplays = [];
-let lastCrashReplay = null;
+let seedCrashReplays = storedReplaysForSeed(gameSeedText).slice();
+let lastCrashReplay = seedCrashReplays[seedCrashReplays.length - 1] || null;
 let gameAudioPrimed = false;
 let audioContext = null;
 let audioLoadStarted = false;

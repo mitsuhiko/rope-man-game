@@ -85,8 +85,8 @@ let crashPlayerFadeStartedAt = 0;
 // capture the render state for each frame so replay playback can draw every
 // run through the normal rope/player renderer instead of an approximate ghost.
 function clearReplayHistory() {
-  seedCrashReplays = [];
-  lastCrashReplay = null;
+  seedCrashReplays = storedReplaysForSeed(gameSeedText).slice();
+  lastCrashReplay = seedCrashReplays[seedCrashReplays.length - 1] || null;
   activeReplayPlayback = null;
   activeReplayRecording = null;
   replayInputOverride = null;
@@ -257,6 +257,7 @@ function finalizeReplayRecording() {
   if (replay.frames.length) {
     seedCrashReplays.push(replay);
     lastCrashReplay = replay;
+    saveCurrentSeedReplayHistory();
   }
 }
 

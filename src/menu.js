@@ -290,20 +290,7 @@ function renderHatChoices() {
 }
 
 function rankedSeedStats(mode) {
-  return Object.entries(seedStats)
-    .map(([seed, raw]) => ({
-      seed,
-      best: Math.max(0, Math.floor(Number(raw && raw.best) || 0)),
-      attempts: Math.max(0, Math.floor(Number(raw && raw.attempts) || 0)),
-    }))
-    .filter((entry) => entry.best > 0 || entry.attempts > 0)
-    .sort((a, b) => {
-      if (mode === 'attempts') {
-        return (b.attempts - a.attempts) || (b.best - a.best) || a.seed.localeCompare(b.seed);
-      }
-      return (b.best - a.best) || (b.attempts - a.attempts) || a.seed.localeCompare(b.seed);
-    })
-    .slice(0, 20);
+  return rankedSeedStatEntries(mode);
 }
 
 function setHighScoreSortMode(mode) {
