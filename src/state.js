@@ -15,6 +15,7 @@ const startSeedFormEl = document.getElementById('start-seed-form');
 const startSeedInputEl = document.getElementById('start-seed-input');
 const startSeedSubmitEl = document.getElementById('start-seed-submit');
 const startSeedErrorEl = document.getElementById('start-seed-error');
+const startModeSelectWrapEl = document.getElementById('start-mode-select-wrap');
 const startCustomizeOpenEl = document.getElementById('start-customize-open');
 const startCustomizeCloseEl = document.getElementById('start-customize-close');
 const startSoundToggleEl = document.getElementById('start-sound-toggle');
@@ -25,6 +26,7 @@ const startScoresCloseEl = document.getElementById('start-scores-close');
 const startScoresByScoreEl = document.getElementById('start-scores-by-score');
 const startScoresByAttemptsEl = document.getElementById('start-scores-by-attempts');
 const startScoresListEl = document.getElementById('start-scores-list');
+const startScoresModeSelectWrapEl = document.getElementById('start-scores-mode-select-wrap');
 const startCustomizationMenuEl = document.getElementById('start-customization-menu');
 const startHatGridEl = document.getElementById('start-hat-grid');
 const startColorGridEl = document.getElementById('start-color-grid');
@@ -121,6 +123,7 @@ const BEST_SCORE_KEY = 'ropeManOverallBestMetersV1';
 const LEGACY_BEST_SCORE_KEY = 'ropeDashBestMetersV2';
 const SEED_STATS_KEY = 'ropeManSeedStatsV1';
 const SEED_REPLAYS_KEY = 'ropeManSeedReplaysV1';
+const GAME_MODE_KEY = 'ropeManGameModeV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
 const COLOR_THEME_KEY = 'ropeManColorThemeV1';
@@ -131,6 +134,17 @@ const MAX_SEED_TEXT_LENGTH = 6;
 const MAX_SEED_VALUE = 0xffffffff;
 const DEFAULT_RNG_SEED = 0x6d2b79f5;
 const REPLAY_FORMAT_VERSION = 1;
+const GAME_MODES = {
+  freeRoam: { label: 'free roam' },
+  escapeWave: { label: 'escape the wave' },
+};
+const GAME_MODE_ORDER = Object.keys(GAME_MODES);
+const DEFAULT_GAME_MODE = 'freeRoam';
+const ESCAPE_WAVE_APPEAR_DELAY = 1.45;
+const ESCAPE_WAVE_CATCHUP_RAMP = 1.8;
+const ESCAPE_WAVE_BASE_SPEED = 132;
+const ESCAPE_WAVE_ACCEL = 4.64;
+const ESCAPE_WAVE_MAX_SPEED = 448;
 
 function normalizeSeedValue(value) {
   value >>>= 0;
@@ -313,32 +327,38 @@ function loadOverallBestMeters() {
   return Math.max(readStorageNumber(BEST_SCORE_KEY), readStorageNumber(LEGACY_BEST_SCORE_KEY));
 }
 
-function rankedSeedStatEntries(mode, limit = 20) {
-  return Object.entries(seedStats)
-    .map(([seed, raw]) => ({
-      seed,
-      best: Math.max(0, Math.floor(Number(raw && raw.best) || 0)),
-      attempts: Math.max(0, Math.floor(Number(raw && raw.attempts) || 0)),
-    }))
-    .filter((entry) => entry.best > 0 || entry.attempts > 0)
-    .sort((a, b) => {
-      if (mode === 'attempts') {
-        return (b.attempts - a.attempts) || (b.best - a.best) || a.seed.localeCompare(b.seed);
-      }
-      return (b.best - a.best) || (b.attempts - a.attempts) || a.seed.localeCompare(b.seed);
-    })
-    .slice(0, limit);
+function normalizeGameMode(mode) {
+  return mode && GAME_MODES[mode] ? mode : DEFAULT_GAME_MODE;
 }
 
-function highScoreBoardSeedSet() {
-  return new Set([
-    ...rankedSeedStatEntries('score').map((entry) => entry.seed),
-    ...rankedSeedStatEntries('attempts').map((entry) => entry.seed),
-  ]);
+function gameModeLabel(mode = gameMode) {
+  const spec = GAME_MODES[normalizeGameMode(mode)];
+  return spec && spec.label ? spec.label : normalizeGameMode(mode);
 }
 
-function loadSeedStats() {
-  const rawStats = readStorageJson(SEED_STATS_KEY, {});
+function readGameModePreference() {
+  try {
+    return normalizeGameMode(localStorage.getItem(GAME_MODE_KEY));
+  } catch (_) {
+    return DEFAULT_GAME_MODE;
+  }
+}
+
+function writeGameModePreference(mode) {
+  try {
+    localStorage.setItem(GAME_MODE_KEY, normalizeGameMode(mode));
+  } catch (_) {
+    // Ignore private-mode/quota storage failures.
+  }
+}
+
+function emptySeedStatsByMode() {
+  const stats = {};
+  for (const mode of GAME_MODE_ORDER) stats[mode] = {};
+  return stats;
+}
+
+function normalizeSeedStatsRecord(rawStats) {
   const stats = {};
   if (!rawStats || typeof rawStats !== 'object') return stats;
 
@@ -354,6 +374,55 @@ function loadSeedStats() {
     };
   }
   return stats;
+}
+
+function rankedSeedStatEntries(mode = gameMode, sortMode = 'score', limit = 20) {
+  const statsForMode = seedStatsByMode[normalizeGameMode(mode)] || {};
+  return Object.entries(statsForMode)
+    .map(([seed, raw]) => ({
+      seed,
+      best: Math.max(0, Math.floor(Number(raw && raw.best) || 0)),
+      attempts: Math.max(0, Math.floor(Number(raw && raw.attempts) || 0)),
+    }))
+    .filter((entry) => entry.best > 0 || entry.attempts > 0)
+    .sort((a, b) => {
+      if (sortMode === 'attempts') {
+        return (b.attempts - a.attempts) || (b.best - a.best) || a.seed.localeCompare(b.seed);
+      }
+      return (b.best - a.best) || (b.attempts - a.attempts) || a.seed.localeCompare(b.seed);
+    })
+    .slice(0, limit);
+}
+
+function highScoreBoardSeedSet() {
+  const seeds = new Set();
+  for (const mode of GAME_MODE_ORDER) {
+    for (const entry of rankedSeedStatEntries(mode, 'score')) seeds.add(`${mode}:${entry.seed}`);
+    for (const entry of rankedSeedStatEntries(mode, 'attempts')) seeds.add(`${mode}:${entry.seed}`);
+  }
+  return seeds;
+}
+
+function loadSeedStatsByMode() {
+  const rawStats = readStorageJson(SEED_STATS_KEY, {});
+  const statsByMode = emptySeedStatsByMode();
+  if (!rawStats || typeof rawStats !== 'object') return statsByMode;
+
+  const looksModeScoped = GAME_MODE_ORDER.some((mode) => rawStats[mode] && typeof rawStats[mode] === 'object');
+  if (looksModeScoped) {
+    for (const mode of GAME_MODE_ORDER) statsByMode[mode] = normalizeSeedStatsRecord(rawStats[mode]);
+  } else {
+    // Migration: all existing high scores were from the original free-roam mode.
+    statsByMode.freeRoam = normalizeSeedStatsRecord(rawStats);
+  }
+  return statsByMode;
+}
+
+function overallBestForMode(mode = gameMode) {
+  const stats = seedStatsByMode && seedStatsByMode[normalizeGameMode(mode)] ? seedStatsByMode[normalizeGameMode(mode)] : {};
+  const seedBest = Math.max(0, ...Object.values(stats).map((raw) => Math.max(0, Math.floor(Number(raw && raw.best) || 0))));
+  if (normalizeGameMode(mode) === 'freeRoam') return Math.max(seedBest, loadOverallBestMeters());
+  return seedBest;
 }
 
 function normalizeCharacterColorId(colorId) {
@@ -389,29 +458,54 @@ function loadCharacterAppearance() {
   };
 }
 
+function filterReplayList(seed, replays) {
+  if (!Array.isArray(replays)) return [];
+  return replays.filter((replay) => (
+    replay &&
+    replay.version === REPLAY_FORMAT_VERSION &&
+    replay.seedText === seed &&
+    Array.isArray(replay.frames) &&
+    replay.frames.length > 0
+  ));
+}
+
+function emptySeedReplayStore() {
+  const store = {};
+  for (const mode of GAME_MODE_ORDER) store[mode] = {};
+  return store;
+}
+
 function loadSeedReplayStore() {
   const raw = readStorageJson(SEED_REPLAYS_KEY, {});
-  const store = {};
+  const store = emptySeedReplayStore();
   if (!raw || typeof raw !== 'object') return store;
 
-  for (const [seed, replays] of Object.entries(raw)) {
-    if (!/^[0-9A-Za-z]{1,6}$/.test(seed) || !Array.isArray(replays)) continue;
-    store[seed] = replays.filter((replay) => (
-      replay &&
-      replay.version === REPLAY_FORMAT_VERSION &&
-      replay.seedText === seed &&
-      Array.isArray(replay.frames) &&
-      replay.frames.length > 0
-    ));
-    if (!store[seed].length) delete store[seed];
+  const looksModeScoped = GAME_MODE_ORDER.some((mode) => raw[mode] && typeof raw[mode] === 'object' && !Array.isArray(raw[mode]));
+  if (looksModeScoped) {
+    for (const mode of GAME_MODE_ORDER) {
+      for (const [seed, replays] of Object.entries(raw[mode] || {})) {
+        if (!/^[0-9A-Za-z]{1,6}$/.test(seed)) continue;
+        const filtered = filterReplayList(seed, replays);
+        if (filtered.length) store[mode][seed] = filtered;
+      }
+    }
+  } else {
+    // Migration: all existing replays were recorded in the original free-roam mode.
+    for (const [seed, replays] of Object.entries(raw)) {
+      if (!/^[0-9A-Za-z]{1,6}$/.test(seed)) continue;
+      const filtered = filterReplayList(seed, replays);
+      if (filtered.length) store.freeRoam[seed] = filtered;
+    }
   }
   return store;
 }
 
 function pruneSeedReplayStore() {
   const retainedSeeds = highScoreBoardSeedSet();
-  for (const seed of Object.keys(seedReplayStore)) {
-    if (!retainedSeeds.has(seed)) delete seedReplayStore[seed];
+  for (const mode of Object.keys(seedReplayStore)) {
+    for (const seed of Object.keys(seedReplayStore[mode] || {})) {
+      if (!retainedSeeds.has(`${mode}:${seed}`)) delete seedReplayStore[mode][seed];
+    }
   }
 }
 
@@ -425,15 +519,16 @@ function writeSeedReplayStore() {
 }
 
 function storedReplaysForSeed(seedText) {
-  const replays = seedReplayStore[seedText];
+  const replays = seedReplayStore[gameMode] && seedReplayStore[gameMode][seedText];
   return Array.isArray(replays) ? replays : [];
 }
 
 function saveCurrentSeedReplayHistory() {
+  if (!seedReplayStore[gameMode]) seedReplayStore[gameMode] = {};
   if (seedCrashReplays.length) {
-    seedReplayStore[gameSeedText] = seedCrashReplays;
+    seedReplayStore[gameMode][gameSeedText] = seedCrashReplays;
   } else {
-    delete seedReplayStore[gameSeedText];
+    delete seedReplayStore[gameMode][gameSeedText];
   }
   writeSeedReplayStore();
 }
@@ -453,10 +548,12 @@ let gameSeedValue = requestedSeedValue ?? randomSeedValue();
 let gameSeedText = seedTextFromValue(gameSeedValue);
 let rngState = gameSeedValue;
 let backgroundRngState = gameSeedValue;
+let gameMode = readGameModePreference();
 let gameStarted = false;
 let scoreMeters = 0;
-let best = loadOverallBestMeters();
-let seedStats = loadSeedStats();
+let seedStatsByMode = loadSeedStatsByMode();
+let seedStats = seedStatsByMode[gameMode] || (seedStatsByMode[gameMode] = {});
+let best = overallBestForMode(gameMode);
 let seedReplayStore = loadSeedReplayStore();
 let seedBest = 0;
 let seedAttempts = 0;
@@ -483,8 +580,24 @@ function syncCurrentSeedStats() {
 
 function persistCurrentSeedStats() {
   seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
-  writeStorageJson(SEED_STATS_KEY, seedStats);
+  seedStatsByMode[gameMode] = seedStats;
+  writeStorageJson(SEED_STATS_KEY, seedStatsByMode);
   if (typeof seedReplayStore !== 'undefined') writeSeedReplayStore();
+}
+
+function setGameMode(mode, options = {}) {
+  const { persist = true } = options;
+  const nextMode = normalizeGameMode(mode);
+  if (nextMode === gameMode) return;
+  gameMode = nextMode;
+  seedStats = seedStatsByMode[gameMode] || (seedStatsByMode[gameMode] = {});
+  best = overallBestForMode(gameMode);
+  syncCurrentSeedStats();
+  if (typeof clearReplayHistory === 'function') clearReplayHistory();
+  if (persist) writeGameModePreference(gameMode);
+  if (typeof syncGameModeSelectors === 'function') syncGameModeSelectors();
+  if (typeof renderHighScoreList === 'function') renderHighScoreList();
+  updateScoreHud();
 }
 
 function updateScoreHud() {
@@ -512,7 +625,7 @@ function updateRecordsForScore(meters) {
   if (score > best) {
     best = score;
     runHadOverallRecord = score > runStartBest;
-    writeStorageNumber(BEST_SCORE_KEY, best);
+    if (gameMode === 'freeRoam') writeStorageNumber(BEST_SCORE_KEY, best);
   }
   if (score > seedBest) {
     seedBest = score;
@@ -625,6 +738,8 @@ let activeReplayPlayback = null;
 let replayInputOverride = null;
 let seedCrashReplays = storedReplaysForSeed(gameSeedText).slice();
 let lastCrashReplay = seedCrashReplays[seedCrashReplays.length - 1] || null;
+let escapeWaveFrontX = -Infinity;
+let escapeWaveSpeed = 0;
 let gameAudioPrimed = false;
 let audioContext = null;
 let audioLoadStarted = false;

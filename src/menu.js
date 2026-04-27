@@ -40,6 +40,7 @@ function toggleThemeSetting() {
 }
 
 let highScoreSortMode = 'score';
+let highScoreGameMode = gameMode;
 let colorEditTarget = 'body';
 
 function startGameWithSeed(seedValue) {
@@ -289,8 +290,51 @@ function renderHatChoices() {
   syncCustomizationUi();
 }
 
+function makeGameModeSelect(id, selectedMode = gameMode) {
+  const select = document.createElement('select');
+  select.id = id;
+  select.className = 'start-mode-select';
+  for (const mode of GAME_MODE_ORDER) {
+    const option = document.createElement('option');
+    option.value = mode;
+    option.textContent = gameModeLabel(mode);
+    select.appendChild(option);
+  }
+  select.value = normalizeGameMode(selectedMode);
+  return select;
+}
+
+function syncGameModeSelectors() {
+  const mainSelect = document.getElementById('start-mode-select');
+  if (mainSelect) mainSelect.value = gameMode;
+  const scoreSelect = document.getElementById('start-scores-mode-select');
+  if (scoreSelect) scoreSelect.value = highScoreGameMode;
+}
+
+function setupGameModeSelects() {
+  if (startModeSelectWrapEl && !document.getElementById('start-mode-select')) {
+    const select = makeGameModeSelect('start-mode-select', gameMode);
+    select.addEventListener('change', () => {
+      setGameMode(select.value);
+      highScoreGameMode = gameMode;
+      syncGameModeSelectors();
+    });
+    startModeSelectWrapEl.replaceChildren(select);
+  }
+  if (startScoresModeSelectWrapEl && !document.getElementById('start-scores-mode-select')) {
+    const select = makeGameModeSelect('start-scores-mode-select', highScoreGameMode);
+    select.addEventListener('change', () => {
+      highScoreGameMode = normalizeGameMode(select.value);
+      syncGameModeSelectors();
+      renderHighScoreList();
+    });
+    startScoresModeSelectWrapEl.replaceChildren(select);
+  }
+  syncGameModeSelectors();
+}
+
 function rankedSeedStats(mode) {
-  return rankedSeedStatEntries(mode);
+  return rankedSeedStatEntries(highScoreGameMode, mode);
 }
 
 function setHighScoreSortMode(mode) {
@@ -338,7 +382,10 @@ function makeHighScoreItem(entry, index) {
   metrics.append(best, attempts);
 
   button.append(rank, seedWrap, metrics);
-  bindHatChoiceButton(button, () => startGameWithSeed(seedValueFromText(entry.seed)));
+  bindHatChoiceButton(button, () => {
+    setGameMode(highScoreGameMode);
+    startGameWithSeed(seedValueFromText(entry.seed));
+  });
   return button;
 }
 
@@ -360,6 +407,7 @@ function setHighScoreMenuVisible(visible, options = {}) {
   if (!startScoresMenuEl) return;
 
   if (visible) {
+    setupGameModeSelects();
     if (startCustomizationMenuEl) {
       startCustomizationMenuEl.hidden = true;
       startCustomizationMenuEl.setAttribute('aria-hidden', 'true');
@@ -438,6 +486,7 @@ function setupStartControls() {
   bindStartButton(startColorTargetHatEl, () => setColorEditTarget('hat'));
   bindStartButton(startColorTargetRopeEl, () => setColorEditTarget('rope'));
   updateStartSettingsUi();
+  setupGameModeSelects();
   setupCustomizationControls();
   setupHighScoreControls();
 

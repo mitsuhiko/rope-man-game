@@ -545,6 +545,16 @@ function drawDebugHitboxes() {
     ctx.stroke();
   }
 
+  const waveHitbox = typeof escapeWaveHitbox === 'function' ? escapeWaveHitbox() : null;
+  if (waveHitbox) {
+    const hit = playerBoxes.some(playerBox => hitboxHitsPlayer(waveHitbox, playerBox));
+    drawPath(waveHitbox);
+    ctx.fillStyle = hit ? 'rgba(0, 120, 255, 0.28)' : 'rgba(0, 120, 255, 0.10)';
+    ctx.strokeStyle = hit ? '#006fff' : '#3a9dff';
+    ctx.fill();
+    ctx.stroke();
+  }
+
   // Lost-state threshold is not a collision hitbox, but it is useful in
   // debug mode because it explains the below-world death condition.
   ctx.strokeStyle = '#ff8a00';
@@ -706,6 +716,139 @@ function drawAnchors() {
     }
     ctx.restore();
   }
+}
+
+const ESCAPE_WAVE_HITBOX_CURVE_STEPS = 12;
+
+function escapeWaveCubicPoint(a, b, c, d, t) {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  return {
+    x: mt2 * mt * a.x + 3 * mt2 * t * b.x + 3 * mt * t2 * c.x + t2 * t * d.x,
+    y: mt2 * mt * a.y + 3 * mt2 * t * b.y + 3 * mt * t2 * c.y + t2 * t * d.y,
+  };
+}
+
+function appendEscapeWaveCurvePoints(points, start, c1, c2, end, steps = ESCAPE_WAVE_HITBOX_CURVE_STEPS) {
+  for (let i = 1; i <= steps; i += 1) {
+    points.push(escapeWaveCubicPoint(start, c1, c2, end, i / steps));
+  }
+}
+
+function escapeWaveGeometry() {
+  if (gameMode !== 'escapeWave' || !Number.isFinite(escapeWaveFrontX)) return null;
+  const viewW = cameraViewW();
+  const crestX = escapeWaveCrestX();
+  if (crestX < cameraX - viewW * 0.45) return null;
+
+  const left = cameraX - viewW * 0.55;
+  const waveBob = Math.sin(time * 1.25) * 52 + Math.sin(time * 0.47 + 1.8) * 34;
+  const top = -170 + waveBob * 0.25;
+  const bottom = H + 220 + waveBob * 0.18;
+  const lipY = H * 0.16 + waveBob;
+  const shoulderY = H * 0.34 + waveBob * 0.72;
+  const fillStart = { x: left, y: bottom };
+  const fillLineTo = { x: left, y: top };
+  const fillCurves = [
+    [
+      { x: crestX - 740, y: lipY - 150 },
+      { x: crestX - 430, y: lipY + 125 },
+      { x: crestX - 145, y: lipY - 52 },
+    ],
+    [
+      { x: crestX - 20, y: lipY - 126 },
+      { x: crestX + 122, y: lipY - 84 },
+      { x: crestX + 142, y: lipY - 14 },
+    ],
+    [
+      { x: crestX + 188, y: shoulderY + 135 },
+      { x: crestX - 118, y: shoulderY + 166 },
+      { x: crestX - 62, y: shoulderY + 38 },
+    ],
+    [
+      { x: crestX - 190, y: shoulderY + 170 },
+      { x: crestX - 250, y: bottom - 150 },
+      { x: crestX - 230, y: bottom },
+    ],
+  ];
+  const fillPoints = [fillStart, fillLineTo];
+  let cursor = fillLineTo;
+  for (const [c1, c2, end] of fillCurves) {
+    appendEscapeWaveCurvePoints(fillPoints, cursor, c1, c2, end);
+    cursor = end;
+  }
+
+  return { left, crestX, bottom, lipY, shoulderY, fillStart, fillLineTo, fillCurves, fillPoints };
+}
+
+function drawEscapeWave() {
+  const wave = escapeWaveGeometry();
+  if (!wave) return;
+  const { left, crestX, bottom, lipY, shoulderY, fillStart, fillLineTo, fillCurves } = wave;
+  const water = WATER;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // The water mass is a single soft shape behind the curling face.  Keep the
+  // advancing edge curved; a straight rectangular wall reads like a debug fill.
+  ctx.globalAlpha = 0.16;
+  ctx.fillStyle = water;
+  ctx.beginPath();
+  ctx.moveTo(sx(fillStart.x), sy(fillStart.y));
+  ctx.lineTo(sx(fillLineTo.x), sy(fillLineTo.y));
+  for (const [c1, c2, end] of fillCurves) {
+    ctx.bezierCurveTo(sx(c1.x), sy(c1.y), sx(c2.x), sy(c2.y), sx(end.x), sy(end.y));
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = 0.94;
+  ctx.strokeStyle = water;
+  ctx.lineWidth = 5;
+
+  // Back/top ridge of the swell.
+  ctx.beginPath();
+  ctx.moveTo(sx(left + 70), sy(lipY - 64));
+  ctx.bezierCurveTo(sx(crestX - 690), sy(lipY - 190), sx(crestX - 420), sy(lipY + 122), sx(crestX - 152), sy(lipY - 52));
+  ctx.bezierCurveTo(sx(crestX - 62), sy(lipY - 112), sx(crestX + 78), sy(lipY - 98), sx(crestX + 135), sy(lipY - 20));
+  ctx.stroke();
+
+  // Breaking lip and rolling curl.
+  ctx.beginPath();
+  ctx.moveTo(sx(crestX - 150), sy(lipY - 52));
+  ctx.bezierCurveTo(sx(crestX - 10), sy(lipY - 145), sx(crestX + 205), sy(lipY - 92), sx(crestX + 150), sy(lipY + 45));
+  ctx.bezierCurveTo(sx(crestX + 110), sy(lipY + 145), sx(crestX - 98), sy(lipY + 116), sx(crestX - 18), sy(lipY + 34));
+  ctx.stroke();
+
+  // Curved front face down toward the floor.
+  ctx.beginPath();
+  ctx.moveTo(sx(crestX - 24), sy(lipY + 35));
+  ctx.bezierCurveTo(sx(crestX - 172), sy(lipY + 170), sx(crestX - 280), sy(bottom - 310), sx(crestX - 225), sy(bottom));
+  ctx.stroke();
+
+  // Foam lines live inside the curl only, not across the whole screen.
+  ctx.globalAlpha = 0.78;
+  ctx.lineWidth = 3.5;
+  for (let i = 0; i < 3; i++) {
+    const dy = i * 44;
+    ctx.beginPath();
+    ctx.moveTo(sx(crestX - 170 + i * 20), sy(lipY + 28 + dy));
+    ctx.bezierCurveTo(sx(crestX - 58), sy(lipY - 16 + dy), sx(crestX + 88), sy(lipY + 8 + dy), sx(crestX + 66), sy(lipY + 70 + dy));
+    ctx.bezierCurveTo(sx(crestX + 35), sy(lipY + 125 + dy), sx(crestX - 128), sy(lipY + 105 + dy), sx(crestX - 76), sy(lipY + 52 + dy));
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 0.62;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(sx(left + 120), sy(shoulderY + 160));
+  ctx.bezierCurveTo(sx(crestX - 520), sy(shoulderY + 40), sx(crestX - 330), sy(shoulderY + 230), sx(crestX - 115), sy(shoulderY + 105));
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function drawObstacles() {

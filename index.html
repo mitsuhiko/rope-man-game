@@ -212,10 +212,16 @@
       cursor: default;
     }
 
-    .start-seed-form {
+    .start-seed-form,
+    .start-mode-field {
       margin: 0;
       padding-top: clamp(16px, 2.4vw, 22px);
       border-top: 2px dashed var(--border-soft);
+    }
+
+    .start-mode-field + .start-seed-form {
+      padding-top: 0;
+      border-top: 0;
     }
 
     .start-label {
@@ -231,6 +237,49 @@
     .start-seed-row {
       display: flex;
       gap: 10px;
+    }
+
+    .start-mode-select-wrap {
+      position: relative;
+    }
+
+    .start-mode-select {
+      box-sizing: border-box;
+      width: 100%;
+      height: clamp(54px, 5.4vw, 64px);
+      padding: 0 46px 0 18px;
+      border: 4px solid var(--ink);
+      border-radius: 16px;
+      background: var(--button-bg);
+      color: var(--ink);
+      appearance: none;
+      -webkit-appearance: none;
+      font: inherit;
+      font-size: clamp(22px, 2.4vw, 31px);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      text-align: center;
+      text-transform: lowercase;
+      cursor: pointer;
+    }
+
+    .start-mode-select-wrap::after {
+      content: "⌄";
+      position: absolute;
+      right: 17px;
+      top: 50%;
+      color: var(--ink);
+      font-size: 24px;
+      font-weight: 900;
+      line-height: 1;
+      pointer-events: none;
+      transform: translateY(-58%);
+    }
+
+    .start-mode-select:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--focus-ring);
     }
 
     .start-seed-input {
@@ -538,6 +587,10 @@
 
     .color-choice.is-selected .color-choice-swatch {
       box-shadow: inset 0 0 0 3px var(--ink);
+    }
+
+    .high-score-mode {
+      margin: 12px 0;
     }
 
     .high-score-tabs {
@@ -1097,6 +1150,10 @@
         <p class="start-copy">Pick a seed, then fling the stickman as far as you can. Share the seed when you find a weird run.</p>
         <div class="start-menu">
           <button id="start-random" class="start-button start-button--primary" type="button">start</button>
+          <div class="start-mode-field">
+            <label class="start-label" for="start-mode-select">game mode</label>
+            <div id="start-mode-select-wrap" class="start-mode-select-wrap"></div>
+          </div>
           <form id="start-seed-form" class="start-seed-form" novalidate>
             <label class="start-label" for="start-seed-input">map seed</label>
             <div class="start-seed-row">
@@ -1151,6 +1208,10 @@
             <p class="customization-copy">Pick a saved map seed to run it again.</p>
           </div>
           <button id="start-scores-close" class="start-button start-button--ghost" type="button">back</button>
+        </div>
+        <div class="high-score-mode">
+          <label class="start-label" for="start-scores-mode-select">game mode</label>
+          <div id="start-scores-mode-select-wrap" class="start-mode-select-wrap"></div>
         </div>
         <div class="high-score-tabs" aria-label="High score sort">
           <button id="start-scores-by-score" class="start-button high-score-tab is-selected" type="button" aria-pressed="true">top scores</button>

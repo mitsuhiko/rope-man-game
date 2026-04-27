@@ -63,6 +63,7 @@ function reset(options = {}) {
   hookArm.y = player.y;
   cameraX = player.x - cameraViewW() * 0.42;
   cameraY = player.y - cameraViewH() * 0.52;
+  resetEscapeWave();
   if (countAttempt) {
     beginSeedAttempt();
   } else {
@@ -79,6 +80,50 @@ function reset(options = {}) {
 
 const REPLAY_END_HOLD = 0.65;
 const CRASH_PLAYER_FADE_MS = 450;
+
+function resetEscapeWave() {
+  if (gameMode === 'escapeWave') {
+    const hiddenEdgeX = cameraX - cameraViewW() * 0.45;
+    escapeWaveFrontX = hiddenEdgeX - ESCAPE_WAVE_BASE_SPEED * ESCAPE_WAVE_APPEAR_DELAY;
+  } else {
+    escapeWaveFrontX = -Infinity;
+  }
+  escapeWaveSpeed = ESCAPE_WAVE_BASE_SPEED;
+}
+
+function escapeWaveSurfaceY(x) {
+  const t = time * 2.2 + x * 0.008;
+  return cameraY + cameraViewH() * 0.18 + Math.sin(t) * 26 + Math.sin(t * 0.47 + 1.7) * 42;
+}
+
+function escapeWaveCrestX() {
+  return escapeWaveFrontX + Math.sin(time * 1.8) * 18;
+}
+
+function escapeWaveHitbox() {
+  const wave = typeof escapeWaveGeometry === 'function' ? escapeWaveGeometry() : null;
+  if (!wave || !wave.fillPoints || wave.fillPoints.length < 3) return null;
+  return {
+    shape: 'polygon',
+    kind: 'escape-wave',
+    points: wave.fillPoints,
+  };
+}
+
+function updateEscapeWave(dt) {
+  if (gameMode !== 'escapeWave' || replayMode) return;
+  escapeWaveSpeed = Math.min(ESCAPE_WAVE_MAX_SPEED, escapeWaveSpeed + ESCAPE_WAVE_ACCEL * dt);
+  const targetBehindPlayer = player.x - (760 - clamp(scoreMeters / 3, 0, 360));
+  const catchupT = smoothstep01((time - ESCAPE_WAVE_APPEAR_DELAY) / ESCAPE_WAVE_CATCHUP_RAMP);
+  const catchupSpeed = Math.max(0, targetBehindPlayer - escapeWaveFrontX) * (0.68 + catchupT * 0.68) * catchupT;
+  escapeWaveFrontX += (escapeWaveSpeed + catchupSpeed) * dt;
+}
+
+function hitsEscapeWave() {
+  const hitbox = escapeWaveHitbox();
+  if (!hitbox) return false;
+  return playerHitboxes().some((box) => hitboxHitsPlayer(hitbox, box));
+}
 let crashPlayerFadeStartedAt = 0;
 
 // Keep all crash replays for the current seed.  Besides the input stream, we
@@ -95,6 +140,7 @@ function clearReplayHistory() {
 function currentSeedReplays() {
   return seedCrashReplays.filter((replay) => (
     replay &&
+    normalizeGameMode(replay.gameMode || DEFAULT_GAME_MODE) === gameMode &&
     replay.seedValue === gameSeedValue &&
     replay.frames &&
     replay.frames.length
@@ -182,6 +228,8 @@ function captureReplayState() {
     cameraZoom,
     scoreMeters,
     furthestX,
+    escapeWaveFrontX,
+    escapeWaveSpeed,
     player: cloneReplayPlayer(),
     ragdoll: cloneReplayRagdoll(),
     hookArm: cloneReplayHookArm(),
@@ -192,6 +240,7 @@ function captureReplayState() {
 function startReplayRecording() {
   activeReplayRecording = {
     version: REPLAY_FORMAT_VERSION,
+    gameMode,
     seedValue: gameSeedValue,
     seedText: gameSeedText,
     frames: [],
@@ -251,6 +300,7 @@ function finalizeReplayRecording() {
     seedAttempts,
     runHadOverallRecord,
     runHadSeedRecord,
+    gameMode,
     seedValue: gameSeedValue,
     seedText: gameSeedText,
   };
@@ -415,6 +465,8 @@ function updateReplayPlayback(realDt) {
     player.y = nextPlayerY;
     scoreMeters = Math.max(0, Math.floor(Number(leader.scoreMeters) || 0));
     furthestX = Math.max(furthestX, Number(leader.furthestX) || player.x, player.x);
+    escapeWaveFrontX = Number.isFinite(Number(leader.escapeWaveFrontX)) ? Number(leader.escapeWaveFrontX) : escapeWaveFrontX;
+    escapeWaveSpeed = Number.isFinite(Number(leader.escapeWaveSpeed)) ? Number(leader.escapeWaveSpeed) : escapeWaveSpeed;
     generateUntil(Math.max(cameraX + cameraViewW() * 2.8, player.x + cameraViewW() * 2.8));
     updateScoreHud();
   }
@@ -696,8 +748,9 @@ function update(dt) {
 
     updateRagdoll(dt);
     updateHookArmAim(dt);
+    updateEscapeWave(dt);
 
-    if (isUnrecoverablyLost() || hitsObstacle()) {
+    if (isUnrecoverablyLost() || hitsObstacle() || hitsEscapeWave()) {
       die();
     }
   }
@@ -870,6 +923,7 @@ function draw() {
   setWorldTransform();
   drawBackground();
   drawTerrain();
+  drawEscapeWave();
   drawObstacles();
   drawAnchors();
   if (replayMode && activeReplayPlayback) {
@@ -928,6 +982,8 @@ function applyReplayRenderState(state) {
 
   Object.assign(hookArm, cloneReplayHookArm(state.hookArm || {}));
   ropeShot = cloneReplayRopeShot(state.ropeShot || null);
+  escapeWaveFrontX = Number.isFinite(Number(state.escapeWaveFrontX)) ? Number(state.escapeWaveFrontX) : escapeWaveFrontX;
+  escapeWaveSpeed = Number.isFinite(Number(state.escapeWaveSpeed)) ? Number(state.escapeWaveSpeed) : escapeWaveSpeed;
   return true;
 }
 
@@ -937,6 +993,8 @@ function saveReplayRenderGlobals() {
     ragdoll: cloneReplayRagdoll(),
     hookArm: cloneReplayHookArm(),
     ropeShot: cloneReplayRopeShot(),
+    escapeWaveFrontX,
+    escapeWaveSpeed,
     appearance: { ...characterAppearance },
   };
 }
@@ -949,6 +1007,8 @@ function restoreReplayRenderGlobals(saved) {
   ragdoll.joints = savedRagdoll.joints;
   Object.assign(hookArm, cloneReplayHookArm(saved.hookArm));
   ropeShot = cloneReplayRopeShot(saved.ropeShot);
+  escapeWaveFrontX = saved.escapeWaveFrontX;
+  escapeWaveSpeed = saved.escapeWaveSpeed;
   characterAppearance.hat = saved.appearance.hat || null;
   characterAppearance.color = normalizeCharacterColorId(saved.appearance.color);
   characterAppearance.hatColor = normalizeCharacterColorId(saved.appearance.hatColor);
@@ -1112,6 +1172,7 @@ function setupPerfLogging() {
     'drawBackground',
     'drawTerrain',
     'drawTerrainPool',
+    'drawEscapeWave',
     'drawObstacles',
     'drawGate',
     'drawSaw',
