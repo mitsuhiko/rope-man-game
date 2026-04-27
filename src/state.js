@@ -330,6 +330,7 @@ function setAssistEnabled(enabled) {
   assistEnabled = Boolean(enabled);
   writeStorageBoolean(ASSIST_ENABLED_KEY, assistEnabled);
   if (!assistEnabled && typeof assistCue !== 'undefined') assistCue = null;
+  if (!assistEnabled && typeof assistReelCue !== 'undefined') assistReelCue = null;
   if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
   if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
 }

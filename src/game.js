@@ -10,7 +10,14 @@ const ASSIST_ATTACH_MARGIN = 18;
 const ASSIST_SAFE_RADIUS = 34;
 const ASSIST_FORWARD_MIN_X = 70;
 const ASSIST_BACKWARD_ALLOWANCE = 180;
+const ASSIST_REEL_LOOKAHEAD = 1.45;
+const ASSIST_REEL_CRITICAL_WINDOW = 1.05;
+const ASSIST_REEL_MIN_SURVIVAL_GAIN = 0.26;
+const ASSIST_REEL_SAFE_BONUS = 0.48;
+const ASSIST_REEL_MIN_LENGTH_CHANGE = 14;
+const ASSIST_REEL_INPUT_DEAD_ZONE = 0.35;
 let assistCue = null;
+let assistReelCue = null;
 
 function reset(options = {}) {
   const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
@@ -48,6 +55,7 @@ function reset(options = {}) {
   recentReleasedAnchorY = 0;
   ropeShot = null;
   assistCue = null;
+  assistReelCue = null;
   if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
   ragdoll.initialized = false;
   ragdoll.joints = {};
@@ -581,17 +589,103 @@ function currentAssistCueKind() {
   return assistCue.kind || '';
 }
 
+function currentAssistReelCueKind() {
+  if (!assistEnabled || !assistReelCue || !gameStarted || gameOver || gamePaused || replayMode) return '';
+  return assistReelCue.kind || '';
+}
+
+function assistHexToRgba(hex, alpha = 1) {
+  const normalized = String(hex || '').replace('#', '');
+  if (normalized.length !== 6) return `rgba(0, 168, 107, ${alpha})`;
+  const value = Number.parseInt(normalized, 16);
+  const r = (value >> 16) & 255;
+  const g = (value >> 8) & 255;
+  const b = value & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function assistPaletteForStyle(style = 'default') {
+  const palettes = colorTheme === 'dark'
+    ? {
+      default: '#82ffb4',
+      quick: '#82ffb4',
+      short: '#82ffb4',
+      reel: '#7cc7ff',
+      long: '#ffd166',
+      jump: '#ffd166',
+      drop: '#ffd166',
+      glide: '#ffd166',
+    }
+    : {
+      default: '#00a86b',
+      quick: '#00a86b',
+      short: '#00a86b',
+      reel: '#2f80ed',
+      long: '#f59e0b',
+      jump: '#f59e0b',
+      drop: '#f59e0b',
+      glide: '#f59e0b',
+    };
+  const color = palettes[style] || palettes.default;
+  return {
+    color,
+    soft: assistHexToRgba(color, colorTheme === 'dark' ? 0.15 : 0.17),
+    glow: assistHexToRgba(color, 0.36),
+  };
+}
+
+function assistPaletteForCue(cue) {
+  return assistPaletteForStyle(cue && cue.assistStyle ? cue.assistStyle : 'default');
+}
+
+function setAssistElementPalette(element, cue) {
+  if (!element) return;
+  const palette = assistPaletteForCue(cue);
+  element.style.setProperty('--assist-current', palette.color);
+  element.style.setProperty('--assist-current-soft', palette.soft);
+  element.style.setProperty('--assist-current-glow', palette.glow);
+}
+
+function clearAssistElementPalette(element) {
+  if (!element) return;
+  element.style.removeProperty('--assist-current');
+  element.style.removeProperty('--assist-current-soft');
+  element.style.removeProperty('--assist-current-glow');
+}
+
 function syncAssistCueUi() {
   const cueKind = currentAssistCueKind();
-  if (!touchActionEl) return;
-  touchActionEl.classList.toggle('is-assist-cue', Boolean(cueKind));
-  if (cueKind) {
-    const label = cueKind === 'release' ? 'LET GO!' : 'HOOK!';
-    touchActionEl.dataset.assistLabel = label;
-    touchActionEl.setAttribute('aria-label', `Assist: ${label.toLowerCase()}`);
-  } else {
-    touchActionEl.removeAttribute('data-assist-label');
-    touchActionEl.setAttribute('aria-label', 'Hook or unhook');
+  if (touchActionEl) {
+    touchActionEl.classList.toggle('is-assist-cue', Boolean(cueKind));
+    if (cueKind) {
+      const label = cueKind === 'release' ? (assistCue.controlLabel || 'LET GO!') : 'HOOK!';
+      touchActionEl.dataset.assistLabel = label;
+      touchActionEl.setAttribute('aria-label', `Assist: ${(assistCue.ariaLabel || label).replace(/\s+/g, ' ').toLowerCase()}`);
+      setAssistElementPalette(touchActionEl, assistCue);
+    } else {
+      touchActionEl.removeAttribute('data-assist-label');
+      touchActionEl.setAttribute('aria-label', 'Hook or unhook');
+      clearAssistElementPalette(touchActionEl);
+    }
+  }
+
+  const reelKind = currentAssistReelCueKind();
+  if (touchJoystickEl) {
+    touchJoystickEl.classList.toggle('is-assist-cue', Boolean(reelKind));
+    touchJoystickEl.classList.toggle('is-assist-retract', reelKind === 'retract');
+    touchJoystickEl.classList.toggle('is-assist-extend', reelKind === 'extend');
+    if (reelKind) {
+      const label = assistReelCue.controlLabel || (reelKind === 'retract' ? 'RETRACT ↑' : 'EXTEND ↓');
+      touchJoystickEl.dataset.assistLabel = label;
+      touchJoystickEl.setAttribute('aria-label', `Assist: ${assistReelCue.ariaLabel || label.toLowerCase()}`);
+      setAssistElementPalette(touchJoystickEl, assistReelCue);
+      if (touchStickEl) touchStickEl.dataset.assistLabel = label;
+    } else {
+      touchJoystickEl.removeAttribute('data-assist-label');
+      touchJoystickEl.setAttribute('aria-label', 'Move and reel joystick');
+      clearAssistElementPalette(touchJoystickEl);
+      if (touchStickEl) touchStickEl.removeAttribute('data-assist-label');
+    }
   }
 }
 
@@ -701,7 +795,7 @@ function assistAttachedSwingPoints(anchor, source, duration, control = inputAxis
   }
 
   const baseT = Number(source.t) || 0;
-  const points = [{ x, y, vx, vy, t: baseT }];
+  const points = [{ x, y, vx, vy, t: baseT, ropeLength }];
 
   while (t < total - 0.0001) {
     const dt = Math.min(ASSIST_SIM_STEP, total - t);
@@ -749,7 +843,7 @@ function assistAttachedSwingPoints(anchor, source, duration, control = inputAxis
     vy -= radial * ny;
 
     t += dt;
-    points.push({ x, y, vx, vy, t: baseT + t });
+    points.push({ x, y, vx, vy, t: baseT + t, ropeLength });
   }
 
   return points;
@@ -760,6 +854,130 @@ function assistPostHookIsSafe(anchor, catchPoint) {
   return {
     safe: !assistPointHitsHazardAt(points[0], points[0].t) && assistFirstHazardIndex(points) === Infinity,
     points,
+  };
+}
+
+function assistSafeDuration(points) {
+  if (!points || !points.length) return 0;
+  const hazardIndex = assistFirstHazardIndex(points);
+  if (hazardIndex === Infinity) return Infinity;
+  return Math.max(0, points[hazardIndex].t - points[0].t);
+}
+
+function assistReleasePlan(points, best, anchor) {
+  const path = points.slice(0, best.index + 1);
+  const hookDelay = Math.max(0, best.point.t || 0);
+  let apexY = player.y;
+  for (const point of path) apexY = Math.min(apexY, point.y);
+
+  const hookDx = best.point.x - player.x;
+  const anchorDx = anchor.x - player.x;
+  const hookDrop = best.point.y - player.y;
+  const rise = player.y - apexY;
+  const long = anchorDx > 520 || hookDx > 430 || hookDelay > 0.78;
+  const short = anchorDx < 330 || hookDelay < 0.50;
+  const jump = rise > 105 && best.point.y < player.y - 45;
+  const drop = hookDrop > 105 && rise < 75;
+
+  let detail;
+  let assistStyle;
+  if (hookDelay < 0.34) {
+    detail = 'quick hook';
+    assistStyle = 'quick';
+  } else if (jump) {
+    detail = long ? 'long jump' : (short ? 'short jump' : 'jump');
+    assistStyle = 'jump';
+  } else if (drop) {
+    detail = long ? 'long drop' : 'drop';
+    assistStyle = 'drop';
+  } else if (long) {
+    detail = 'long glide';
+    assistStyle = 'long';
+  } else if (short) {
+    detail = 'short hop';
+    assistStyle = 'short';
+  } else {
+    detail = 'glide';
+    assistStyle = 'glide';
+  }
+
+  const showDetailText = assistStyle === 'jump' || assistStyle === 'drop' || assistStyle === 'long' || assistStyle === 'glide';
+
+  return {
+    detail,
+    assistStyle,
+    showDetailText,
+    path,
+    hookDelay,
+  };
+}
+
+function assistReelCandidate(reel, control) {
+  const points = assistAttachedSwingPoints(player.anchor, player, ASSIST_REEL_LOOKAHEAD, control, reel);
+  const start = points[0] || { ropeLength: player.ropeLength, t: 0 };
+  const end = points[points.length - 1] || start;
+  const safeDuration = assistSafeDuration(points);
+  const cappedSafeDuration = safeDuration === Infinity
+    ? ASSIST_REEL_LOOKAHEAD + ASSIST_REEL_SAFE_BONUS
+    : Math.min(safeDuration, ASSIST_REEL_LOOKAHEAD);
+  const lengthChange = Math.abs((end.ropeLength ?? player.ropeLength) - (start.ropeLength ?? player.ropeLength));
+  const forwardProgress = (end.x || player.x) - (start.x || player.x);
+  return {
+    reel,
+    kind: reel < 0 ? 'retract' : 'extend',
+    points,
+    safeDuration,
+    cappedSafeDuration,
+    lengthChange,
+    forwardProgress,
+  };
+}
+
+function evaluateReelAssistCue() {
+  if (!player.attached || !player.anchor || ropeShot) return null;
+  if (hypot(player.vx, player.vy) < 70) return null;
+
+  const control = inputAxisX();
+  const currentReel = inputAxisY();
+  const base = assistReelCandidate(currentReel, control);
+  if (base.safeDuration === Infinity) return null;
+
+  let best = null;
+  for (const reel of [-1, 1]) {
+    const candidate = assistReelCandidate(reel, control);
+    const improvement = candidate.cappedSafeDuration - base.cappedSafeDuration;
+    const effectiveChange = candidate.lengthChange >= ASSIST_REEL_MIN_LENGTH_CHANGE;
+    if (!effectiveChange && improvement < ASSIST_REEL_MIN_SURVIVAL_GAIN) continue;
+    if (improvement < ASSIST_REEL_MIN_SURVIVAL_GAIN) continue;
+    if (candidate.safeDuration < Math.min(ASSIST_REEL_LOOKAHEAD, base.safeDuration + ASSIST_REEL_MIN_SURVIVAL_GAIN)) continue;
+    if (!best || improvement > best.improvement || (improvement === best.improvement && candidate.forwardProgress > best.forwardProgress)) {
+      best = { ...candidate, improvement };
+    }
+  }
+
+  if (!best) return null;
+  const currentDirection = Math.abs(currentReel) >= ASSIST_REEL_INPUT_DEAD_ZONE ? Math.sign(currentReel) : 0;
+  if (currentDirection === Math.sign(best.reel) && Math.abs(currentReel) > 0.78) return null;
+
+  const urgent = base.safeDuration <= ASSIST_REEL_CRITICAL_WINDOW;
+  const decisiveRescue = best.safeDuration === Infinity || best.improvement >= ASSIST_REEL_CRITICAL_WINDOW * 0.55;
+  if (!urgent && !decisiveRescue) return null;
+
+  const urgencyScore = 1 - clamp(base.safeDuration / ASSIST_REEL_CRITICAL_WINDOW, 0, 1);
+  const rescueScore = clamp(best.improvement / ASSIST_REEL_LOOKAHEAD, 0, 1);
+  const confidence = clamp(0.38 + urgencyScore * 0.36 + rescueScore * 0.28, 0, 1);
+  const retract = best.kind === 'retract';
+  return {
+    kind: best.kind,
+    label: retract ? 'retract ↑' : 'extend ↓',
+    controlLabel: retract ? 'RETRACT ↑' : 'EXTEND ↓',
+    ariaLabel: retract ? 'retract rope' : 'extend rope',
+    assistStyle: 'reel',
+    anchor: player.anchor,
+    path: best.points,
+    confidence,
+    hazardIn: base.safeDuration,
+    improvement: best.improvement,
   };
 }
 
@@ -812,17 +1030,25 @@ function evaluateReleaseAssistCue() {
     if (!postHook.safe) continue;
 
     if (!best || score > best.score) {
-      best = { score, index: catchIndex, point, attachDistance };
+      best = { score, index: catchIndex, point, catchPoint: afterShot, catchT, shotDuration, attachDistance };
     }
   }
 
   if (!best || best.score < 0.32) return null;
+  const plan = assistReleasePlan(points, best, anchor);
   return {
     kind: 'release',
     label: 'let go!',
+    controlLabel: plan.showDetailText ? `LET GO\n${plan.detail.toUpperCase()}` : 'LET GO!',
+    ariaLabel: `let go: ${plan.detail}`,
+    assistStyle: plan.assistStyle,
+    planDetail: plan.detail,
+    showDetailText: plan.showDetailText,
     anchor,
     point: best.point,
-    path: points.slice(0, best.index + 1),
+    catchPoint: best.catchPoint,
+    hookDelay: plan.hookDelay,
+    path: plan.path,
     confidence: clamp(best.score, 0, 1),
   };
 }
@@ -872,11 +1098,13 @@ function evaluateHookAssistCue() {
 function updateAssistCue() {
   if (!assistEnabled || !gameStarted || replayMode || gamePaused || gameOver) {
     assistCue = null;
+    assistReelCue = null;
     syncAssistCueUi();
     return;
   }
 
   assistCue = player.attached ? evaluateReleaseAssistCue() : evaluateHookAssistCue();
+  assistReelCue = player.attached && !assistCue ? evaluateReelAssistCue() : null;
   syncAssistCueUi();
 }
 
@@ -1219,15 +1447,14 @@ function isUnrecoverablyLost() {
 function sx(x) { return x - cameraX; }
 function sy(y) { return y - cameraY; }
 
-function assistCanvasColor(alpha = 1) {
-  if (colorTheme === 'dark') return `rgba(130, 255, 180, ${alpha})`;
-  return `rgba(0, 168, 107, ${alpha})`;
+function assistCanvasColor(alpha = 1, cue = null) {
+  return assistHexToRgba(assistPaletteForCue(cue).color, alpha);
 }
 
-function drawAssistPath(points, alpha = 0.32) {
+function drawAssistPath(points, alpha = 0.32, cue = null) {
   if (!points || points.length < 2) return;
   ctx.save();
-  ctx.strokeStyle = assistCanvasColor(alpha);
+  ctx.strokeStyle = assistCanvasColor(alpha, cue);
   ctx.lineWidth = 4;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -1241,10 +1468,10 @@ function drawAssistPath(points, alpha = 0.32) {
   ctx.restore();
 }
 
-function drawAssistPulse(x, y, radius, confidence = 0.6, dashed = false) {
+function drawAssistPulse(x, y, radius, confidence = 0.6, dashed = false, cue = null) {
   const pulse = 0.5 + 0.5 * Math.sin(time * 10.5);
   ctx.save();
-  ctx.strokeStyle = assistCanvasColor(0.42 + confidence * 0.34);
+  ctx.strokeStyle = assistCanvasColor(0.42 + confidence * 0.34, cue);
   ctx.lineWidth = 3 + confidence * 2;
   ctx.lineCap = 'round';
   if (dashed) ctx.setLineDash([12, 8]);
@@ -1260,11 +1487,11 @@ function drawAssistPulse(x, y, radius, confidence = 0.6, dashed = false) {
   ctx.restore();
 }
 
-function drawAssistLabel(text, x, y, align = 'left') {
+function drawAssistLabel(text, x, y, align = 'left', size = 25, cue = null) {
   ctx.save();
   ctx.translate(sx(x), sy(y));
   ctx.rotate(Math.sin(time * 3.1) * 0.025 - 0.06);
-  ctx.font = '900 25px "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive';
+  ctx.font = `900 ${size}px "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive`;
   ctx.textBaseline = 'middle';
   ctx.textAlign = align;
   ctx.lineJoin = 'round';
@@ -1274,12 +1501,91 @@ function drawAssistLabel(text, x, y, align = 'left') {
   ctx.lineWidth = 2;
   ctx.strokeStyle = INK;
   ctx.strokeText(text, 0, 0);
-  ctx.fillStyle = assistCanvasColor(1);
+  ctx.fillStyle = assistCanvasColor(1, cue);
   ctx.fillText(text, 0, 0);
   ctx.restore();
 }
 
+function drawAssistShotLine(from, anchor, confidence = 0.6, cue = null) {
+  if (!from || !anchor) return;
+  ctx.save();
+  ctx.strokeStyle = assistCanvasColor(0.52 + confidence * 0.22, cue);
+  ctx.lineWidth = 3 + confidence * 1.5;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  ctx.moveTo(sx(from.x), sy(from.y));
+  ctx.lineTo(sx(anchor.x), sy(anchor.y));
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAssistArrow(fromX, fromY, toX, toY, confidence = 0.6, cue = null) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const len = Math.max(1, hypot(dx, dy));
+  const ux = dx / len;
+  const uy = dy / len;
+  const head = 16 + confidence * 7;
+  const wing = 9 + confidence * 4;
+
+  ctx.save();
+  ctx.strokeStyle = assistCanvasColor(0.70 + confidence * 0.22, cue);
+  ctx.fillStyle = assistCanvasColor(0.72 + confidence * 0.18, cue);
+  ctx.lineWidth = 5 + confidence * 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sx(fromX), sy(fromY));
+  ctx.lineTo(sx(toX), sy(toY));
+  ctx.stroke();
+
+  const leftX = toX - ux * head - uy * wing;
+  const leftY = toY - uy * head + ux * wing;
+  const rightX = toX - ux * head + uy * wing;
+  const rightY = toY - uy * head - ux * wing;
+  ctx.beginPath();
+  ctx.moveTo(sx(toX), sy(toY));
+  ctx.lineTo(sx(leftX), sy(leftY));
+  ctx.lineTo(sx(rightX), sy(rightY));
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAssistReelCue() {
+  if (!currentAssistReelCueKind()) return;
+  const cue = assistReelCue;
+  const anchor = cue.anchor || player.anchor;
+  if (!anchor) return;
+
+  const confidence = cue.confidence ?? 0.5;
+  drawAssistPath(cue.path, 0.14 + confidence * 0.12, cue);
+  drawAssistPulse(player.x, player.y, 25, confidence, true, cue);
+
+  const dx = player.x - anchor.x;
+  const dy = player.y - anchor.y;
+  const d = Math.max(1, hypot(dx, dy));
+  const outwardX = dx / d;
+  const outwardY = dy / d;
+  const direction = cue.kind === 'retract' ? -1 : 1;
+  const dirX = outwardX * direction;
+  const dirY = outwardY * direction;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 9.5);
+  const startX = player.x + dirX * 8;
+  const startY = player.y + dirY * 8;
+  const endX = player.x + dirX * (70 + confidence * 24 + pulse * 10);
+  const endY = player.y + dirY * (70 + confidence * 24 + pulse * 10);
+  drawAssistArrow(startX, startY, endX, endY, confidence, cue);
+
+  const labelAlign = dirX < -0.2 ? 'right' : 'left';
+  const labelPad = labelAlign === 'left' ? 18 : -18;
+  drawAssistLabel(cue.label, endX + labelPad, endY - 18, labelAlign, 25, cue);
+}
+
 function drawAssistCue() {
+  drawAssistReelCue();
   if (!currentAssistCueKind()) return;
   const cue = assistCue;
   const anchor = cue.anchor;
@@ -1288,13 +1594,20 @@ function drawAssistCue() {
 
   ctx.save();
   if (cue.kind === 'release') {
-    drawAssistPath(cue.path, 0.24 + confidence * 0.2);
-    drawAssistPulse(player.x, player.y, 29, confidence, true);
-    drawAssistPulse(anchor.x, anchor.y, 23, confidence, true);
-    drawAssistLabel(cue.label, player.x + 36, player.y - 42);
+    drawAssistPath(cue.path, 0.24 + confidence * 0.2, cue);
+    drawAssistPulse(player.x, player.y, 29, confidence, true, cue);
+    drawAssistPulse(anchor.x, anchor.y, 23, confidence, true, cue);
+    if (cue.point) {
+      drawAssistShotLine(cue.point, anchor, confidence, cue);
+      drawAssistPulse(cue.point.x, cue.point.y, 15, confidence * 0.8, false, cue);
+    }
+    drawAssistLabel(cue.label, player.x + 36, player.y - 42, 'left', 25, cue);
+    if (cue.showDetailText && cue.planDetail) {
+      drawAssistLabel(cue.planDetail, player.x + 42, player.y - 14, 'left', 18, cue);
+    }
   } else if (cue.kind === 'hook') {
     const hand = hookHandPosition();
-    ctx.strokeStyle = assistCanvasColor(0.74 + confidence * 0.22);
+    ctx.strokeStyle = assistCanvasColor(0.74 + confidence * 0.22, cue);
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.setLineDash([15, 8]);

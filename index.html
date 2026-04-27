@@ -816,9 +816,11 @@
       transform: translateY(-50%);
       font-size: clamp(13px, 3.2vw, 20px);
       font-weight: 900;
+      line-height: 1.05;
       letter-spacing: 0.08em;
       text-align: center;
       text-transform: uppercase;
+      white-space: pre-line;
     }
 
     .touch-action:active {
@@ -826,21 +828,30 @@
       border-color: var(--ink);
     }
 
-    .touch-action.is-assist-cue {
-      border-color: var(--assist);
-      background: var(--assist-soft);
-      box-shadow: 0 0 0 10px var(--assist-glow);
+    .touch-action.is-assist-cue,
+    .touch-joystick.is-assist-cue {
+      border-color: var(--assist-current, var(--assist));
+      background: var(--assist-current-soft, var(--assist-soft));
+      box-shadow: 0 0 0 10px var(--assist-current-glow, var(--assist-glow));
       animation: assist-button-pulse 0.72s ease-in-out infinite alternate;
     }
 
     .touch-action.is-assist-cue::before {
-      border-color: var(--assist);
+      border-color: var(--assist-current, var(--assist));
     }
 
     .touch-action.is-assist-cue::after {
       content: attr(data-assist-label);
-      color: var(--assist);
+      color: var(--assist-current, var(--assist));
       text-shadow: 0 2px 0 var(--paper);
+    }
+
+    .touch-joystick.is-assist-cue::before {
+      border-top-color: var(--assist-current, var(--assist));
+    }
+
+    .touch-joystick.is-assist-cue::after {
+      border-left-color: var(--assist-current, var(--assist));
     }
 
     @keyframes assist-button-pulse {
@@ -849,7 +860,8 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .touch-action.is-assist-cue {
+      .touch-action.is-assist-cue,
+      .touch-joystick.is-assist-cue {
         animation: none;
       }
     }
@@ -907,6 +919,55 @@
     .touch-joystick.is-active .touch-stick {
       border-color: var(--ink);
       transition: none;
+    }
+
+    .touch-joystick.is-assist-cue .touch-stick {
+      border-color: var(--assist-current, var(--assist));
+      background: var(--assist-current-soft, var(--assist-soft));
+      box-shadow: 0 0 0 7px var(--assist-current-glow, var(--assist-glow));
+    }
+
+    .touch-joystick.is-assist-cue .touch-stick::before,
+    .touch-joystick.is-assist-cue .touch-stick::after {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--assist-current, var(--assist));
+      font-weight: 900;
+      line-height: 1;
+      text-align: center;
+      text-shadow: 0 2px 0 var(--paper);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .touch-joystick.is-assist-cue .touch-stick::before {
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: clamp(24px, 7vw, 38px);
+    }
+
+    .touch-joystick.is-assist-cue .touch-stick::after {
+      content: attr(data-assist-label);
+      font-size: clamp(13px, 3.1vw, 18px);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    .touch-joystick.is-assist-retract .touch-stick::before {
+      content: "↑";
+    }
+
+    .touch-joystick.is-assist-extend .touch-stick::before {
+      content: "↓";
+    }
+
+    .touch-joystick.is-assist-retract .touch-stick::after {
+      bottom: calc(100% + 12px);
+    }
+
+    .touch-joystick.is-assist-extend .touch-stick::after {
+      top: calc(100% + 12px);
     }
 
     .crash-panel {
