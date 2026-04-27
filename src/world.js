@@ -299,14 +299,14 @@ function terrainPoints(left, right, step = TERRAIN_STEP) {
   return points;
 }
 
-function terrainLiquidSurfaceY(pool, worldX) {
+function terrainLiquidSurfaceY(pool, worldX, atTime = time) {
   const localX = worldX - pool.x;
   return pool.levelY +
-    Math.sin(time * 3.2 + pool.waveOffset + localX * 0.055) * pool.waveAmp +
-    Math.sin(time * 1.15 + pool.waveOffset * 1.7 + localX * 0.018) * 1.8;
+    Math.sin(atTime * 3.2 + pool.waveOffset + localX * 0.055) * pool.waveAmp +
+    Math.sin(atTime * 1.15 + pool.waveOffset * 1.7 + localX * 0.018) * 1.8;
 }
 
-function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
+function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w, atTime = time) {
   const start = Math.max(pool.x, left);
   const end = Math.min(pool.x + pool.w, right);
   if (end - start < 2) return [];
@@ -317,7 +317,7 @@ function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
   let ground = [];
   const wetThreshold = 1;
   const wetness = (p) => p.y - pool.levelY;
-  const surfaceY = (p) => Math.min(terrainLiquidSurfaceY(pool, p.x), p.y - wetThreshold);
+  const surfaceY = (p) => Math.min(terrainLiquidSurfaceY(pool, p.x, atTime), p.y - wetThreshold);
   const addPoint = (p) => {
     surface.push({ x: p.x, y: surfaceY(p) });
     ground.push({ x: p.x, y: p.y });
@@ -362,11 +362,11 @@ function terrainPoolPolygons(pool, left = pool.x, right = pool.x + pool.w) {
   return polys;
 }
 
-function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + cameraViewW() + 320) {
+function terrainLiquidHitboxes(left = cameraX - 320, right = cameraX + cameraViewW() + 320, atTime = time) {
   const hitboxes = [];
   for (const pool of terrainPools) {
     if (pool.x > right || pool.x + pool.w < left) continue;
-    for (const poly of terrainPoolPolygons(pool, left, right)) {
+    for (const poly of terrainPoolPolygons(pool, left, right, atTime)) {
       hitboxes.push({ shape: 'polygon', kind: pool.type, points: poly.points });
     }
   }
@@ -391,9 +391,9 @@ function pruneTerrain() {
   terrainPools = terrainPools.filter(pool => pool.x + pool.w > cutoff);
 }
 
-function obstacleHitboxes() {
-  const hitboxes = [terrainSolidHitbox()];
-  hitboxes.push(...terrainLiquidHitboxes());
+function obstacleHitboxes(left = cameraX - 320, right = cameraX + cameraViewW() + 320, atTime = time) {
+  const hitboxes = [terrainSolidHitbox(left, right)];
+  hitboxes.push(...terrainLiquidHitboxes(left, right, atTime));
 
   for (const o of obstacles) {
     if (o.type === 'saw') {
@@ -401,11 +401,11 @@ function obstacleHitboxes() {
         shape: 'circle',
         kind: 'saw',
         x: o.x,
-        y: o.y + Math.sin(time * 1.8 + o.phase) * o.bob,
+        y: o.y + Math.sin(atTime * 1.8 + o.phase) * o.bob,
         r: o.r * 0.86,
       });
     } else if (o.type === 'gate') {
-      const open = 0.5 + 0.5 * Math.sin(time * o.speed + o.phase);
+      const open = 0.5 + 0.5 * Math.sin(atTime * o.speed + o.phase);
       const gap = o.gap * (0.75 + open * 0.40);
       const top = o.gapY - gap / 2;
       const bottom = o.gapY + gap / 2;

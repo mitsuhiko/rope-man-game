@@ -25,6 +25,10 @@ function updateStartSettingsUi() {
     startThemeToggleEl.textContent = isDark ? 'dark mode' : 'light mode';
     startThemeToggleEl.setAttribute('aria-pressed', isDark ? 'true' : 'false');
   }
+  if (startAssistToggleEl) {
+    startAssistToggleEl.textContent = assistEnabled ? 'assist on' : 'assist off';
+    startAssistToggleEl.setAttribute('aria-pressed', assistEnabled ? 'true' : 'false');
+  }
 }
 
 function toggleSoundSetting() {
@@ -37,6 +41,10 @@ function toggleThemeSetting() {
   setColorTheme(colorTheme === 'dark' ? 'light' : 'dark');
   if (startHatGridEl && startHatGridEl.children.length) renderHatChoices();
   if (startColorGridEl && startColorGridEl.children.length) renderColorChoices();
+}
+
+function toggleAssistSetting() {
+  setAssistEnabled(!assistEnabled);
 }
 
 let highScoreSortMode = 'score';
@@ -482,6 +490,7 @@ function setupStartControls() {
   bindStartButton(startSeedSubmitEl, randomizeStartSeed);
   bindStartButton(startSoundToggleEl, toggleSoundSetting);
   bindStartButton(startThemeToggleEl, toggleThemeSetting);
+  bindStartButton(startAssistToggleEl, toggleAssistSetting);
   bindStartButton(startColorTargetBodyEl, () => setColorEditTarget('body'));
   bindStartButton(startColorTargetHatEl, () => setColorEditTarget('hat'));
   bindStartButton(startColorTargetRopeEl, () => setColorEditTarget('rope'));

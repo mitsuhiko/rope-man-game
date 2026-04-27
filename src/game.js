@@ -1,5 +1,17 @@
 // Core game loop, player physics, input actions, and bootstrap.
 
+const ASSIST_SIM_STEP = 1 / 30;
+const ASSIST_RELEASE_LOOKAHEAD = 1.55;
+const ASSIST_HOOK_LOOKAHEAD_PAD = 0.12;
+const ASSIST_POST_HOOK_LOOKAHEAD = 0.85;
+const ASSIST_RELEASE_MIN_LEAD = 0.16;
+const ASSIST_RELEASE_RANGE = HOOK_RANGE * 0.92;
+const ASSIST_ATTACH_MARGIN = 18;
+const ASSIST_SAFE_RADIUS = 34;
+const ASSIST_FORWARD_MIN_X = 70;
+const ASSIST_BACKWARD_ALLOWANCE = 180;
+let assistCue = null;
+
 function reset(options = {}) {
   const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
   const recordRun = options.recordRun ?? (gameStarted && !replayMode);
@@ -35,6 +47,8 @@ function reset(options = {}) {
   recentReleasedAnchorX = 0;
   recentReleasedAnchorY = 0;
   ropeShot = null;
+  assistCue = null;
+  if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
   ragdoll.initialized = false;
   ragdoll.joints = {};
   ragdoll.visualSide = 1;
@@ -562,6 +576,310 @@ function updateFocus() {
   }
 }
 
+function currentAssistCueKind() {
+  if (!assistEnabled || !assistCue || !gameStarted || gameOver || gamePaused || replayMode) return '';
+  return assistCue.kind || '';
+}
+
+function syncAssistCueUi() {
+  const cueKind = currentAssistCueKind();
+  if (!touchActionEl) return;
+  touchActionEl.classList.toggle('is-assist-cue', Boolean(cueKind));
+  if (cueKind) {
+    const label = cueKind === 'release' ? 'LET GO!' : 'HOOK!';
+    touchActionEl.dataset.assistLabel = label;
+    touchActionEl.setAttribute('aria-label', `Assist: ${label.toLowerCase()}`);
+  } else {
+    touchActionEl.removeAttribute('data-assist-label');
+    touchActionEl.setAttribute('aria-label', 'Hook or unhook');
+  }
+}
+
+function assistNextForwardAnchor() {
+  const minX = Math.max(
+    player.x + ASSIST_FORWARD_MIN_X,
+    player.anchor ? player.anchor.x + ASSIST_FORWARD_MIN_X : -Infinity,
+  );
+  let next = null;
+  for (const anchor of anchors) {
+    if (anchor === player.anchor) continue;
+    if (anchor.x < minX) continue;
+    if (!next || anchor.x < next.x) next = anchor;
+  }
+  return next;
+}
+
+function assistFreeFlightPoints(duration, source = player, control = inputAxisX()) {
+  const total = Math.max(0, Number(duration) || 0);
+  const points = [];
+  let x = Number(source.x) || 0;
+  let y = Number(source.y) || 0;
+  let vx = Number(source.vx) || 0;
+  let vy = Number(source.vy) || 0;
+  let t = 0;
+  points.push({ x, y, vx, vy, t });
+
+  while (t < total - 0.0001) {
+    const dt = Math.min(ASSIST_SIM_STEP, total - t);
+    if (control) vx += control * AIR_ACCEL * dt;
+
+    const speed = hypot(vx, vy);
+    const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
+    const drag = Math.exp(-nonlinearDrag * dt);
+    vx *= drag;
+    vy *= drag;
+
+    vy += GRAVITY * dt;
+    x += vx * dt;
+    y += vy * dt;
+    t += dt;
+    points.push({ x, y, vx, vy, t });
+  }
+
+  return points;
+}
+
+function assistPointAtTime(points, targetT) {
+  if (!points || !points.length) return null;
+  if (targetT <= points[0].t) return points[0];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    if (next.t >= targetT) {
+      const span = Math.max(0.0001, next.t - prev.t);
+      const u = clamp((targetT - prev.t) / span, 0, 1);
+      return {
+        x: prev.x + (next.x - prev.x) * u,
+        y: prev.y + (next.y - prev.y) * u,
+        vx: prev.vx + (next.vx - prev.vx) * u,
+        vy: prev.vy + (next.vy - prev.vy) * u,
+        t: targetT,
+      };
+    }
+  }
+  return points[points.length - 1];
+}
+
+function assistPointHitsHazardAt(point, futureT = point ? point.t : 0, radius = ASSIST_SAFE_RADIUS) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return true;
+  if (point.y > LOST_BELOW_Y - radius) return true;
+
+  const hitboxes = obstacleHitboxes(point.x - 460, point.x + 460, time + futureT);
+  const waveHitbox = typeof escapeWaveHitbox === 'function' ? escapeWaveHitbox() : null;
+  if (waveHitbox) hitboxes.push(waveHitbox);
+
+  const probe = { shape: 'circle', kind: 'assist-player', x: point.x, y: point.y, r: radius };
+  return hitboxes.some(hitbox => hitboxHitsPlayer(hitbox, probe));
+}
+
+function assistFirstHazardIndex(points) {
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i];
+    if (assistPointHitsHazardAt(point, point.t)) return i;
+  }
+  return Infinity;
+}
+
+function assistAttachedSwingPoints(anchor, source, duration, control = inputAxisX(), reel = inputAxisY()) {
+  const total = Math.max(0, Number(duration) || 0);
+  let x = Number(source.x) || 0;
+  let y = Number(source.y) || 0;
+  let vx = Number(source.vx) || 0;
+  let vy = Number(source.vy) || 0;
+  let t = 0;
+
+  const dx0 = x - anchor.x;
+  const dy0 = y - anchor.y;
+  const d0 = Math.max(0.0001, hypot(dx0, dy0));
+  let ropeLength = clamp(d0, MIN_ROPE, MAX_ROPE);
+  const nx0 = dx0 / d0;
+  const ny0 = dy0 / d0;
+  const radial0 = vx * nx0 + vy * ny0;
+  if (radial0 > 0) {
+    vx -= radial0 * nx0 * 0.35;
+    vy -= radial0 * ny0 * 0.35;
+  }
+
+  const baseT = Number(source.t) || 0;
+  const points = [{ x, y, vx, vy, t: baseT }];
+
+  while (t < total - 0.0001) {
+    const dt = Math.min(ASSIST_SIM_STEP, total - t);
+    const speed = hypot(vx, vy);
+    const nonlinearDrag = 0.018 + Math.pow(speed / 2100, 2.2) * 1.9;
+    const drag = Math.exp(-nonlinearDrag * dt);
+    vx *= drag;
+    vy *= drag;
+
+    vy += GRAVITY * dt;
+    x += vx * dt;
+    y += vy * dt;
+
+    const dx = x - anchor.x;
+    const dy = y - anchor.y;
+    const d = Math.max(0.0001, hypot(dx, dy));
+    const nx = dx / d;
+    const ny = dy / d;
+
+    if (control) {
+      const ax = control * SWING_ACCEL;
+      const radialAccel = ax * nx;
+      vx += (ax - radialAccel * nx) * dt;
+      vy += (-radialAccel * ny) * dt;
+    }
+
+    if (Math.abs(reel) > 0.0001) {
+      const oldLength = ropeLength;
+      ropeLength = adjustedRopeLength(oldLength, reel * ROPE_REEL_SPEED * dt);
+      if (ropeLength !== oldLength) {
+        const tx = -ny;
+        const ty = nx;
+        const tangentSpeed = vx * tx + vy * ty;
+        const radialSpeed = vx * nx + vy * ny;
+        const energyScale = clamp(oldLength / ropeLength, 0.985, 1.018);
+        vx = tx * tangentSpeed * energyScale + nx * radialSpeed;
+        vy = ty * tangentSpeed * energyScale + ny * radialSpeed;
+      }
+    }
+
+    x = anchor.x + nx * ropeLength;
+    y = anchor.y + ny * ropeLength;
+    const radial = vx * nx + vy * ny;
+    vx -= radial * nx;
+    vy -= radial * ny;
+
+    t += dt;
+    points.push({ x, y, vx, vy, t: baseT + t });
+  }
+
+  return points;
+}
+
+function assistPostHookIsSafe(anchor, catchPoint) {
+  const points = assistAttachedSwingPoints(anchor, catchPoint, ASSIST_POST_HOOK_LOOKAHEAD);
+  return {
+    safe: !assistPointHitsHazardAt(points[0], points[0].t) && assistFirstHazardIndex(points) === Infinity,
+    points,
+  };
+}
+
+function evaluateReleaseAssistCue() {
+  if (!player.attached || !player.anchor || hypot(player.vx, player.vy) < 110) return null;
+
+  const anchor = assistNextForwardAnchor();
+  if (!anchor) return null;
+
+  const currentDx = anchor.x - player.x;
+  const currentDy = anchor.y - player.y;
+  const currentDistance = Math.max(1, hypot(currentDx, currentDy));
+  const currentClosingSpeed = (currentDx * player.vx + currentDy * player.vy) / currentDistance;
+  if (player.vx < 40 && currentClosingSpeed < 80) return null;
+
+  const points = assistFreeFlightPoints(ASSIST_RELEASE_LOOKAHEAD);
+  const firstHazardIndex = assistFirstHazardIndex(points);
+  let best = null;
+
+  for (let i = 1; i < points.length && i < firstHazardIndex; i += 1) {
+    const point = points[i];
+    if (point.t < ASSIST_RELEASE_MIN_LEAD) continue;
+
+    const dx = anchor.x - point.x;
+    const dy = anchor.y - point.y;
+    const d = Math.max(1, hypot(dx, dy));
+    if (d > ASSIST_RELEASE_RANGE) continue;
+
+    const shotDuration = clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION);
+    const catchT = point.t + shotDuration;
+    const catchIndexRaw = points.findIndex(pathPoint => pathPoint.t >= catchT);
+    const catchIndex = catchIndexRaw >= 0 ? Math.max(i, catchIndexRaw) : points.length - 1;
+    if (catchIndex >= firstHazardIndex) continue;
+
+    const afterShot = assistPointAtTime(points, catchT) || point;
+    const attachDistance = hypot(anchor.x - afterShot.x, anchor.y - afterShot.y);
+    if (attachDistance > HOOK_RANGE + ROPE_ATTACH_GRACE - ASSIST_ATTACH_MARGIN) continue;
+    if (point.vx < -160 && point.x > anchor.x - ASSIST_BACKWARD_ALLOWANCE) continue;
+
+    const closingSpeed = (dx * point.vx + dy * point.vy) / d;
+    const distanceScore = 1 - d / ASSIST_RELEASE_RANGE;
+    const attachScore = 1 - attachDistance / (HOOK_RANGE + ROPE_ATTACH_GRACE);
+    const forwardScore = clamp((point.vx + 220) / 840, 0, 1);
+    const closingScore = clamp((closingSpeed + 380) / 1120, 0, 1);
+    const timeScore = 1 - Math.abs(point.t - 0.58) / 0.82;
+    const score = distanceScore * 0.34 + attachScore * 0.24 + forwardScore * 0.17 + closingScore * 0.13 + clamp(timeScore, 0, 1) * 0.06 + 0.06;
+    if (score < 0.32 || (best && score <= best.score)) continue;
+
+    const postHook = assistPostHookIsSafe(anchor, afterShot);
+    if (!postHook.safe) continue;
+
+    if (!best || score > best.score) {
+      best = { score, index: catchIndex, point, attachDistance };
+    }
+  }
+
+  if (!best || best.score < 0.32) return null;
+  return {
+    kind: 'release',
+    label: 'let go!',
+    anchor,
+    point: best.point,
+    path: points.slice(0, best.index + 1),
+    confidence: clamp(best.score, 0, 1),
+  };
+}
+
+function evaluateHookAssistCue() {
+  if (player.attached || ropeShot) return null;
+  const anchor = lockedAnchor || focusedAnchor;
+  if (!anchor) return null;
+  if (anchor !== lockedAnchor && anchor.x < player.x - ASSIST_BACKWARD_ALLOWANCE) return null;
+
+  const d = hypot(anchor.x - player.x, anchor.y - player.y);
+  if (d > HOOK_RANGE) return null;
+
+  const shotDuration = clamp(d / ROPE_SHOT_SPEED, ROPE_SHOT_MIN_DURATION, ROPE_SHOT_MAX_DURATION);
+  const points = assistFreeFlightPoints(shotDuration + ASSIST_HOOK_LOOKAHEAD_PAD);
+  const catchIndexRaw = points.findIndex(point => point.t >= shotDuration);
+  const catchIndex = catchIndexRaw >= 0 ? Math.max(1, catchIndexRaw) : points.length - 1;
+  if (catchIndex >= assistFirstHazardIndex(points)) return null;
+
+  const catchPoint = assistPointAtTime(points, shotDuration) || points[points.length - 1];
+  const attachDistance = hypot(anchor.x - catchPoint.x, anchor.y - catchPoint.y);
+  if (attachDistance > HOOK_RANGE + ROPE_ATTACH_GRACE - ASSIST_ATTACH_MARGIN) return null;
+
+  const postHook = assistPostHookIsSafe(anchor, catchPoint);
+  if (!postHook.safe) return null;
+
+  const dx = anchor.x - player.x;
+  const dy = anchor.y - player.y;
+  const currentDistance = Math.max(1, d);
+  const closingSpeed = (dx * player.vx + dy * player.vy) / currentDistance;
+  const rangeScore = 1 - d / HOOK_RANGE;
+  const attachScore = 1 - attachDistance / (HOOK_RANGE + ROPE_ATTACH_GRACE);
+  const closingScore = clamp((closingSpeed + 520) / 1360, 0, 1);
+  const confidence = rangeScore * 0.42 + attachScore * 0.36 + closingScore * 0.22;
+  if (confidence < 0.24) return null;
+
+  return {
+    kind: 'hook',
+    label: 'hook!',
+    anchor,
+    point: catchPoint,
+    path: points.slice(0, catchIndex + 1),
+    confidence: clamp(confidence, 0, 1),
+  };
+}
+
+function updateAssistCue() {
+  if (!assistEnabled || !gameStarted || replayMode || gamePaused || gameOver) {
+    assistCue = null;
+    syncAssistCueUi();
+    return;
+  }
+
+  assistCue = player.attached ? evaluateReleaseAssistCue() : evaluateHookAssistCue();
+  syncAssistCueUi();
+}
+
 function inputAction(options = {}) {
   const {
     record = true,
@@ -753,6 +1071,7 @@ function update(dt) {
     if (isUnrecoverablyLost() || hitsObstacle() || hitsEscapeWave()) {
       die();
     }
+    updateAssistCue();
   }
 
   anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || (ropeShot && a === ropeShot.anchor) || a.x > cameraX - 1800);
@@ -900,6 +1219,97 @@ function isUnrecoverablyLost() {
 function sx(x) { return x - cameraX; }
 function sy(y) { return y - cameraY; }
 
+function assistCanvasColor(alpha = 1) {
+  if (colorTheme === 'dark') return `rgba(130, 255, 180, ${alpha})`;
+  return `rgba(0, 168, 107, ${alpha})`;
+}
+
+function drawAssistPath(points, alpha = 0.32) {
+  if (!points || points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = assistCanvasColor(alpha);
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([9, 10]);
+  ctx.beginPath();
+  ctx.moveTo(sx(points[0].x), sy(points[0].y));
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(sx(points[i].x), sy(points[i].y));
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAssistPulse(x, y, radius, confidence = 0.6, dashed = false) {
+  const pulse = 0.5 + 0.5 * Math.sin(time * 10.5);
+  ctx.save();
+  ctx.strokeStyle = assistCanvasColor(0.42 + confidence * 0.34);
+  ctx.lineWidth = 3 + confidence * 2;
+  ctx.lineCap = 'round';
+  if (dashed) ctx.setLineDash([12, 8]);
+  ctx.beginPath();
+  ctx.arc(sx(x), sy(y), radius + pulse * 9, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 0.58;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([3, 9]);
+  ctx.beginPath();
+  ctx.arc(sx(x), sy(y), radius + 16 + pulse * 13, -time * 1.6, Math.PI * 2 - time * 1.6);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAssistLabel(text, x, y, align = 'left') {
+  ctx.save();
+  ctx.translate(sx(x), sy(y));
+  ctx.rotate(Math.sin(time * 3.1) * 0.025 - 0.06);
+  ctx.font = '900 25px "Comic Sans MS", "Comic Sans", "Chalkboard SE", "Comic Neue", cursive';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = align;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 7;
+  ctx.strokeStyle = PAPER;
+  ctx.strokeText(text, 0, 0);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = INK;
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = assistCanvasColor(1);
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+function drawAssistCue() {
+  if (!currentAssistCueKind()) return;
+  const cue = assistCue;
+  const anchor = cue.anchor;
+  const confidence = cue.confidence ?? 0.5;
+  if (!anchor) return;
+
+  ctx.save();
+  if (cue.kind === 'release') {
+    drawAssistPath(cue.path, 0.24 + confidence * 0.2);
+    drawAssistPulse(player.x, player.y, 29, confidence, true);
+    drawAssistPulse(anchor.x, anchor.y, 23, confidence, true);
+    drawAssistLabel(cue.label, player.x + 36, player.y - 42);
+  } else if (cue.kind === 'hook') {
+    const hand = hookHandPosition();
+    ctx.strokeStyle = assistCanvasColor(0.74 + confidence * 0.22);
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([15, 8]);
+    ctx.beginPath();
+    ctx.moveTo(sx(hand.x), sy(hand.y));
+    ctx.lineTo(sx(anchor.x), sy(anchor.y));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawAssistPath(cue.path, 0.16 + confidence * 0.12);
+    drawAssistPulse(anchor.x, anchor.y, 25, confidence, false);
+    drawAssistLabel(cue.label, anchor.x + 28, anchor.y - 40);
+  }
+  ctx.restore();
+}
+
 function setViewportTransform() {
   ctx.setTransform(DPR * viewportScale, 0, 0, DPR * viewportScale, DPR * viewportX, DPR * viewportY);
 }
@@ -910,6 +1320,7 @@ function setWorldTransform() {
 
 function draw() {
   if (gameShellEl) gameShellEl.classList.toggle('is-replaying', replayMode);
+  syncAssistCueUi();
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, screenW, screenH);
@@ -926,6 +1337,7 @@ function draw() {
   drawEscapeWave();
   drawObstacles();
   drawAnchors();
+  drawAssistCue();
   if (replayMode && activeReplayPlayback) {
     drawReplayGhosts();
   } else {

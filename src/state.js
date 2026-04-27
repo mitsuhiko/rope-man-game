@@ -20,6 +20,7 @@ const startCustomizeOpenEl = document.getElementById('start-customize-open');
 const startCustomizeCloseEl = document.getElementById('start-customize-close');
 const startSoundToggleEl = document.getElementById('start-sound-toggle');
 const startThemeToggleEl = document.getElementById('start-theme-toggle');
+const startAssistToggleEl = document.getElementById('start-assist-toggle');
 const startScoresOpenEl = document.getElementById('start-scores-open');
 const startScoresMenuEl = document.getElementById('start-scores-menu');
 const startScoresCloseEl = document.getElementById('start-scores-close');
@@ -128,6 +129,7 @@ const GAME_MODE_KEY = 'ropeManGameModeV1';
 const CHARACTER_APPEARANCE_KEY = 'ropeManCharacterAppearanceV1';
 const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
 const COLOR_THEME_KEY = 'ropeManColorThemeV1';
+const ASSIST_ENABLED_KEY = 'ropeManAssistEnabledV1';
 const CAMERA_ZOOM_LEVEL_KEY = 'ropeManCameraZoomLevelV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -322,6 +324,14 @@ function setColorTheme(theme) {
   applyCustomRopeColor();
   writeColorThemePreference(colorTheme);
   if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
+}
+
+function setAssistEnabled(enabled) {
+  assistEnabled = Boolean(enabled);
+  writeStorageBoolean(ASSIST_ENABLED_KEY, assistEnabled);
+  if (!assistEnabled && typeof assistCue !== 'undefined') assistCue = null;
+  if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
+  if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
 }
 
 function loadOverallBestMeters() {
@@ -651,6 +661,7 @@ function saveCharacterAppearance() {
 
 let soundEnabled = readStorageBoolean(SOUND_ENABLED_KEY, true);
 let colorTheme = readColorThemePreference();
+let assistEnabled = readStorageBoolean(ASSIST_ENABLED_KEY, false);
 applyVisualTheme(colorTheme);
 
 const initialSearchParams = new URLSearchParams(window.location.search);

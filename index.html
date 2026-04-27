@@ -33,6 +33,9 @@
       --touch-ink: rgba(0, 0, 0, 0.5);
       --touch-line: rgba(0, 0, 0, 0.28);
       --touch-bg: rgba(255, 253, 247, 0.04);
+      --assist: #00a86b;
+      --assist-soft: rgba(0, 168, 107, 0.16);
+      --assist-glow: rgba(0, 168, 107, 0.34);
       --focus-ring: rgba(139, 90, 43, 0.18);
     }
 
@@ -57,6 +60,9 @@
       --touch-ink: rgba(255, 243, 223, 0.56);
       --touch-line: rgba(255, 243, 223, 0.34);
       --touch-bg: rgba(255, 243, 223, 0.05);
+      --assist: #82ffb4;
+      --assist-soft: rgba(130, 255, 180, 0.13);
+      --assist-glow: rgba(130, 255, 180, 0.34);
       --focus-ring: rgba(223, 159, 86, 0.24);
     }
 
@@ -380,7 +386,7 @@
 
     .start-settings {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
       gap: 10px;
       margin-top: 10px;
       transform: rotate(-0.2deg);
@@ -820,6 +826,34 @@
       border-color: var(--ink);
     }
 
+    .touch-action.is-assist-cue {
+      border-color: var(--assist);
+      background: var(--assist-soft);
+      box-shadow: 0 0 0 10px var(--assist-glow);
+      animation: assist-button-pulse 0.72s ease-in-out infinite alternate;
+    }
+
+    .touch-action.is-assist-cue::before {
+      border-color: var(--assist);
+    }
+
+    .touch-action.is-assist-cue::after {
+      content: attr(data-assist-label);
+      color: var(--assist);
+      text-shadow: 0 2px 0 var(--paper);
+    }
+
+    @keyframes assist-button-pulse {
+      from { transform: scale(1); }
+      to { transform: scale(1.055) rotate(-1.2deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .touch-action.is-assist-cue {
+        animation: none;
+      }
+    }
+
     .touch-joystick {
       left: calc(env(safe-area-inset-left, 0px) + 24px);
     }
@@ -1173,6 +1207,7 @@
         <div class="start-settings" aria-label="Game settings">
           <button id="start-sound-toggle" class="start-button start-toggle" type="button" aria-pressed="true">sound on</button>
           <button id="start-theme-toggle" class="start-button start-toggle" type="button" aria-pressed="false">light mode</button>
+          <button id="start-assist-toggle" class="start-button start-toggle" type="button" aria-pressed="false">assist off</button>
           <button id="start-scores-open" class="start-button start-toggle" type="button" aria-controls="start-scores-menu" aria-expanded="false">high scores</button>
         </div>
       </div>
