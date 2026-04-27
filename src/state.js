@@ -27,6 +27,10 @@ const startScoresByAttemptsEl = document.getElementById('start-scores-by-attempt
 const startScoresListEl = document.getElementById('start-scores-list');
 const startCustomizationMenuEl = document.getElementById('start-customization-menu');
 const startHatGridEl = document.getElementById('start-hat-grid');
+const startColorGridEl = document.getElementById('start-color-grid');
+const startColorTargetBodyEl = document.getElementById('start-color-target-body');
+const startColorTargetHatEl = document.getElementById('start-color-target-hat');
+const startColorTargetRopeEl = document.getElementById('start-color-target-rope');
 const startCharacterSelectionEl = document.getElementById('start-character-selection');
 const touchControlsEl = document.querySelector('.touch-controls');
 const touchActionEl = document.getElementById('touch-action');
@@ -47,6 +51,26 @@ const AUDIO_FILES = {
   hookRelease: { url: 'assets/hook-release.wav', volume: 1 },
 };
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+
+const CHARACTER_COLOR_PALETTES = {
+  black: { label: 'black', light: '#111111', dark: '#fff3df' },
+  red: { label: 'red', light: '#d82424', dark: '#ff5f6d' },
+  green: { label: 'green', light: '#168a3a', dark: '#54d57b' },
+  blue: { label: 'blue', light: '#1769d1', dark: '#62b5ff' },
+  purple: { label: 'purple', light: '#7c3fcf', dark: '#c18cff' },
+  orange: { label: 'orange', light: '#e46d12', dark: '#ff9a3d' },
+  pink: { label: 'pink', light: '#d53d8c', dark: '#ff86c0' },
+  teal: { label: 'teal', light: '#008b8b', dark: '#48d6cf' },
+  yellow: { label: 'yellow', light: '#b98300', dark: '#ffd45a' },
+  brown: { label: 'brown', light: '#8b5a2b', dark: '#df9f56' },
+  gray: { label: 'gray', light: '#5f6670', dark: '#b8c0cc' },
+  lime: { label: 'lime', light: '#6f9f00', dark: '#b9ef4b' },
+  cyan: { label: 'cyan', light: '#007aa3', dark: '#5ee6ff' },
+  magenta: { label: 'magenta', light: '#b529c8', dark: '#f08cff' },
+};
+const CHARACTER_COLOR_ORDER = Object.keys(CHARACTER_COLOR_PALETTES);
+const DEFAULT_CHARACTER_COLOR = 'black';
+const DEFAULT_ROPE_COLOR = 'brown';
 
 const THEME_PALETTES = {
   light: {
@@ -278,6 +302,7 @@ function setSoundEnabled(enabled) {
 function setColorTheme(theme) {
   colorTheme = theme === 'dark' ? 'dark' : 'light';
   applyVisualTheme(colorTheme);
+  applyCustomRopeColor();
   writeColorThemePreference(colorTheme);
   if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
 }
@@ -305,10 +330,35 @@ function loadSeedStats() {
   return stats;
 }
 
+function normalizeCharacterColorId(colorId) {
+  return colorId && CHARACTER_COLOR_PALETTES[colorId] ? colorId : DEFAULT_CHARACTER_COLOR;
+}
+
+function characterColorSpec(colorId = characterAppearance.color) {
+  return CHARACTER_COLOR_PALETTES[normalizeCharacterColorId(colorId)] || CHARACTER_COLOR_PALETTES[DEFAULT_CHARACTER_COLOR];
+}
+
+function characterColorForTheme(colorId = characterAppearance.color, theme = colorTheme) {
+  const spec = characterColorSpec(colorId);
+  return spec[theme === 'dark' ? 'dark' : 'light'] || spec.light;
+}
+
+function ropeColorForTheme(colorId = DEFAULT_ROPE_COLOR, theme = colorTheme) {
+  return characterColorForTheme(normalizeCharacterColorId(colorId || DEFAULT_ROPE_COLOR), theme);
+}
+
+function applyCustomRopeColor() {
+  ROPE = ropeColorForTheme(characterAppearance.ropeColor);
+}
+
 function loadCharacterAppearance() {
   const raw = readStorageJson(CHARACTER_APPEARANCE_KEY, {});
   return {
     hat: raw && typeof raw.hat === 'string' ? raw.hat : null,
+    color: normalizeCharacterColorId(raw && typeof raw.color === 'string' ? raw.color : null),
+    hatColor: normalizeCharacterColorId(raw && typeof raw.hatColor === 'string' ? raw.hatColor : null),
+    hatUsesCustomColor: Boolean(raw && raw.hatUsesCustomColor),
+    ropeColor: normalizeCharacterColorId(raw && typeof raw.ropeColor === 'string' ? raw.ropeColor : DEFAULT_ROPE_COLOR),
     backpack: Boolean(raw && raw.backpack),
   };
 }
@@ -591,6 +641,7 @@ const hookArm = {
 };
 
 const characterAppearance = loadCharacterAppearance();
+applyCustomRopeColor();
 
 let anchors = [];
 let obstacles = [];

@@ -70,11 +70,33 @@ function setCharacterAppearance(nextAppearance = {}) {
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hat')) {
     characterAppearance.hat = nextAppearance.hat && CHARACTER_HATS[nextAppearance.hat] ? nextAppearance.hat : null;
   }
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'color')) {
+    characterAppearance.color = normalizeCharacterColorId(nextAppearance.color);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hatColor')) {
+    characterAppearance.hatColor = normalizeCharacterColorId(nextAppearance.hatColor);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hatUsesCustomColor')) {
+    characterAppearance.hatUsesCustomColor = Boolean(nextAppearance.hatUsesCustomColor);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'ropeColor')) {
+    characterAppearance.ropeColor = normalizeCharacterColorId(nextAppearance.ropeColor || DEFAULT_ROPE_COLOR);
+    applyCustomRopeColor();
+  }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'backpack')) {
     characterAppearance.backpack = Boolean(nextAppearance.backpack);
   }
   saveCharacterAppearance();
   preloadCharacterAppearance();
+}
+
+function characterInkColor() {
+  return characterColorForTheme(characterAppearance.color);
+}
+
+function hatInkColor() {
+  const colorId = characterAppearance.hatUsesCustomColor ? characterAppearance.hatColor : DEFAULT_CHARACTER_COLOR;
+  return characterColorForTheme(colorId);
 }
 
 function accessoryImageForHat(hatId) {
@@ -103,7 +125,7 @@ function rgbFromHexColor(color) {
 }
 
 function paperTintedAccessoryCanvas(hatId, img) {
-  const ink = rgbFromHexColor(INK);
+  const ink = rgbFromHexColor(hatInkColor());
   const paper = rgbFromHexColor(PAPER);
   const key = `${hatId}:${img.naturalWidth}x${img.naturalHeight}:${ink.r},${ink.g},${ink.b}:${paper.r},${paper.g},${paper.b}`;
   if (characterAccessoryPaperCanvases[key]) return characterAccessoryPaperCanvases[key];
@@ -202,7 +224,7 @@ function drawCharacterBackpack(core) {
 
   withCharacterTransform(center, side, body, () => {
     ctx.fillStyle = '#8f6339';
-    ctx.strokeStyle = INK;
+    ctx.strokeStyle = characterInkColor();
     ctx.lineWidth = 3;
     roundedRectPath(-10, -20, 21, 40, 7);
     ctx.fill();
@@ -222,8 +244,8 @@ function drawPrimitiveHat(core) {
   const top = add(head, mul(body, -headR * 0.95));
 
   withCharacterTransform(top, side, body, () => {
-    ctx.fillStyle = INK;
-    ctx.strokeStyle = INK;
+    ctx.fillStyle = hatInkColor();
+    ctx.strokeStyle = hatInkColor();
     ctx.lineWidth = 2.5;
     roundedRectPath(-15, -19, 30, 18, 3);
     ctx.fill();
@@ -308,7 +330,8 @@ function drawStickman() {
   drawCharacterBackpack(core);
 
   ctx.save();
-  ctx.strokeStyle = INK;
+  const characterInk = characterInkColor();
+  ctx.strokeStyle = characterInk;
   ctx.fillStyle = PAPER;
   ctx.lineWidth = 3.8;
   ctx.lineCap = 'round';
@@ -335,7 +358,7 @@ function drawStickman() {
 
   drawCharacterHat(core);
 
-  ctx.fillStyle = INK;
+  ctx.fillStyle = characterInk;
   ctx.beginPath();
   ctx.arc(sx(grip.x), sy(grip.y), 4, 0, Math.PI * 2);
   ctx.arc(sx(freeHand.x), sy(freeHand.y), 3, 0, Math.PI * 2);

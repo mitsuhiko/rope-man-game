@@ -949,11 +949,21 @@ function restoreReplayRenderGlobals(saved) {
   Object.assign(hookArm, cloneReplayHookArm(saved.hookArm));
   ropeShot = cloneReplayRopeShot(saved.ropeShot);
   characterAppearance.hat = saved.appearance.hat || null;
+  characterAppearance.color = normalizeCharacterColorId(saved.appearance.color);
+  characterAppearance.hatColor = normalizeCharacterColorId(saved.appearance.hatColor);
+  characterAppearance.hatUsesCustomColor = Boolean(saved.appearance.hatUsesCustomColor);
+  characterAppearance.ropeColor = normalizeCharacterColorId(saved.appearance.ropeColor || DEFAULT_ROPE_COLOR);
+  applyCustomRopeColor();
   characterAppearance.backpack = Boolean(saved.appearance.backpack);
 }
 
 function applyReplayAppearance(appearance = {}) {
   characterAppearance.hat = appearance.hat || null;
+  characterAppearance.color = normalizeCharacterColorId(appearance.color);
+  characterAppearance.hatColor = normalizeCharacterColorId(appearance.hatColor);
+  characterAppearance.hatUsesCustomColor = Boolean(appearance.hatUsesCustomColor);
+  characterAppearance.ropeColor = normalizeCharacterColorId(appearance.ropeColor || DEFAULT_ROPE_COLOR);
+  applyCustomRopeColor();
   characterAppearance.backpack = Boolean(appearance.backpack);
   if (typeof preloadCharacterAppearance === 'function') preloadCharacterAppearance();
 }
