@@ -39,6 +39,7 @@ const CHARACTER_HATS = {
   'parrot-mask': { src: 'assets/hats/parrot-mask.png', label: 'parrot mask', width: 25, height: 18, up: -3, side: 12 },
   'party-hat': { src: 'assets/hats/party-hat.png', label: 'party hat', width: 38, height: 52, up: 33, side: 0 },
   'pirate-hat': { src: 'assets/hats/pirate-hat.png', label: 'pirate hat', width: 50, height: 40, up: 14, side: 0 },
+  'poop-hat': { src: 'assets/hats/poop-hat.png', label: 'poop hat', width: 50, height: 48, up: 3, side: 0 },
   'pointed-beard': { src: 'assets/hats/pointed-beard.png', label: 'pointed beard', width: 32, height: 40, up: -15, side: 0 },
   'pom-beanie': { src: 'assets/hats/pom-beanie.png', label: 'pom beanie', width: 38, height: 41, up: 22, side: 0 },
   'ram-horns': { src: 'assets/hats/ram-horns.png', label: 'ram horns', width: 50, height: 29, up: 16, side: 0 },
@@ -130,10 +131,11 @@ function paperTintedAccessoryCanvas(hatId, img) {
 }
 
 function drawPaperTintedAccessoryToCanvas(canvas, hatId, img) {
-  const tinted = paperTintedAccessoryCanvas(hatId, img);
-  canvas.width = tinted.width;
-  canvas.height = tinted.height;
-  canvas.getContext('2d').drawImage(tinted, 0, 0);
+  const spec = CHARACTER_HATS[hatId];
+  const source = spec && spec.preserveColors ? img : paperTintedAccessoryCanvas(hatId, img);
+  canvas.width = source.naturalWidth || source.width;
+  canvas.height = source.naturalHeight || source.height;
+  canvas.getContext('2d').drawImage(source, 0, 0);
 }
 
 function createPaperTintedAccessoryElement(hatId) {
@@ -247,7 +249,7 @@ function drawCharacterHat(core) {
   const center = add(add(head, mul(body, -spec.up)), mul(side, spec.side || 0));
   const img = accessoryImageForHat(hatId);
   if (img && img.complete && img.naturalWidth > 0) {
-    drawOrientedImage(paperTintedAccessoryCanvas(hatId, img), center, side, body, spec.width, spec.height);
+    drawOrientedImage(spec.preserveColors ? img : paperTintedAccessoryCanvas(hatId, img), center, side, body, spec.width, spec.height);
   } else {
     preloadCharacterAppearance();
     drawPrimitiveHat(core);
