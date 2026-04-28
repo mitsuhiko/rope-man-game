@@ -60,6 +60,10 @@ function resetJoystickInput() {
   if (touchJoystickEl) touchJoystickEl.classList.remove('is-active');
 }
 
+function mobileControlPointerAllowed(e) {
+  return !e || e.pointerType !== 'mouse';
+}
+
 function updateJoystickInput(e) {
   if (!touchJoystickEl) return;
   const rect = touchJoystickEl.getBoundingClientRect();
@@ -208,12 +212,12 @@ function updateCrashSummary() {
   } else if (runHadSeedRecord) {
     message = 'new seed record!';
   }
-  const coinText = currentRunCoinsEarned > 0 ? ` · +${currentRunCoinsEarned}₶` : '';
+  const coinText = currentRunCoinsEarned > 0 ? ` · +${currentRunCoinsEarned}¢` : '';
   if (currentRunDistanceBonus > 0) {
-    help.unshift(`distance bonus: +${currentRunDistanceBonus}₶`);
+    help.unshift(`distance bonus: +${currentRunDistanceBonus}¢`);
   }
   if (currentRunRecordBonus > 0) {
-    help.unshift(`record bonus: +${currentRunRecordBonus}₶`);
+    help.unshift(`record bonus: +${currentRunRecordBonus}¢`);
   }
   setRunMenuContent({
     title: 'CRASH',
@@ -260,6 +264,7 @@ function setupCrashControls() {
 function setupTouchControls() {
   if (touchPauseEl) {
     touchPauseEl.addEventListener('pointerdown', (e) => {
+      if (!mobileControlPointerAllowed(e)) return;
       e.preventDefault();
       e.stopPropagation();
       if (!gameStarted || gameOver || gamePaused || replayMode) return;
@@ -275,6 +280,7 @@ function setupTouchControls() {
 
   if (touchActionEl) {
     touchActionEl.addEventListener('pointerdown', (e) => {
+      if (!mobileControlPointerAllowed(e)) return;
       if (stopReplayFromMobileTap(e)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -302,6 +308,7 @@ function setupTouchControls() {
     };
 
     touchJoystickEl.addEventListener('pointerdown', (e) => {
+      if (!mobileControlPointerAllowed(e)) return;
       if (stopReplayFromMobileTap(e)) return;
       e.preventDefault();
       e.stopPropagation();

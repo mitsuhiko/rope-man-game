@@ -32,9 +32,9 @@ let practiceCheckpointIndex = 0;
 let practiceRestoredFromCheckpoint = false;
 
 function reset(options = {}) {
-  const tracksStats = gameModeTracksStats(gameMode);
-  const countAttempt = (options.countAttempt ?? (gameStarted && !replayMode)) && tracksStats;
-  const recordRun = (options.recordRun ?? (gameStarted && !replayMode)) && tracksStats;
+  const tracksHighScores = currentRunTracksHighScores();
+  const countAttempt = (options.countAttempt ?? (gameStarted && !replayMode)) && tracksHighScores;
+  const recordRun = (options.recordRun ?? (gameStarted && !replayMode)) && tracksHighScores;
 
   if (countAttempt && typeof resetJoystickInput === 'function') resetJoystickInput();
   resetRandomStreams();
@@ -1546,6 +1546,7 @@ window.addEventListener('keyup', (e) => {
 });
 window.addEventListener('pointerdown', (e) => {
   if (!gameStarted || gamePaused) return;
+  if (e.pointerType === 'mouse') return;
   if (replayMode) {
     if (typeof stopReplayFromMobileTap === 'function' && stopReplayFromMobileTap(e)) return;
     e.preventDefault();
@@ -1553,9 +1554,6 @@ window.addEventListener('pointerdown', (e) => {
   }
   if (e.target.closest && e.target.closest('.touch-controls')) return;
   e.preventDefault();
-  primeGameAudio();
-  if (e.pointerType === 'touch' && touchControlsVisible()) return;
-  inputAction();
 }, { passive: false });
 
 function update(dt) {
@@ -1740,7 +1738,7 @@ function attachToAnchor(anchor) {
 }
 
 function awardRunRecordBonus() {
-  if (replayMode || currentRunRecordBonus > 0 || !gameModeTracksStats()) return 0;
+  if (replayMode || currentRunRecordBonus > 0 || !currentRunTracksHighScores()) return 0;
   if (runFinalScore < RECORD_BONUS_MIN_METERS) return 0;
 
   const bonus = runHadOverallRecord

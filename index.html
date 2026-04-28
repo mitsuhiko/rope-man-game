@@ -101,7 +101,7 @@
       width: 100%;
       height: 100%;
       background: var(--paper);
-      cursor: crosshair;
+      cursor: default;
       touch-action: manipulation;
       touch-action: none;
     }
@@ -880,8 +880,9 @@
       letter-spacing: 0.02em;
     }
 
-    .score-value #coin-balance {
-      color: var(--rope);
+    .score-value #coin-balance,
+    .score-currency {
+      color: var(--ink);
     }
 
     .score-meta {
@@ -1465,8 +1466,8 @@
         <div class="customization-head">
           <div>
             <h2 id="customization-title" class="customization-title">customize rope man</h2>
-            <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10₶ in free roam, 20₶ in escape the wave, and saw coins are 50₶. Hats cost 100₶.</p>
-            <div class="customization-wallet">balance <span id="start-wallet-balance">0</span>₶</div>
+            <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10¢ in free roam, 20¢ in escape the wave, and saw coins are 50¢. Hats cost 100¢.</p>
+            <div class="customization-wallet">balance <span id="start-wallet-balance">0</span>¢</div>
           </div>
           <button id="start-customize-close" class="start-button start-button--ghost" type="button">back</button>
         </div>
@@ -1491,7 +1492,7 @@
         <div class="purchase-card">
           <div id="start-purchase-preview" class="purchase-preview" aria-hidden="true"></div>
           <h2 id="start-purchase-title" class="purchase-title">buy hat?</h2>
-          <p id="start-purchase-copy" class="purchase-copy">Spend 100₶ on this hat?</p>
+          <p id="start-purchase-copy" class="purchase-copy">Spend 100¢ on this hat?</p>
           <div class="purchase-actions">
             <button id="start-purchase-cancel" class="start-button start-button--ghost" type="button">cancel</button>
             <button id="start-purchase-confirm" class="start-button start-button--primary start-button--ghost" type="button">buy</button>
@@ -1519,7 +1520,7 @@
     </section>
     <section class="hud" aria-label="Score">
       <div class="score-label">score</div>
-      <div class="score-value"><span id="score">0</span>m · <span id="coin-balance">0</span>₶</div>
+      <div class="score-value"><span id="score">0</span>m · <span id="coin-balance">0</span><span class="score-currency">¢</span></div>
       <div class="score-seed">seed <span id="seed">------</span></div>
       <div class="score-meta">overall <span id="best">0</span>m</div>
       <div class="score-meta">seed best <span id="seed-best">0</span>m</div>

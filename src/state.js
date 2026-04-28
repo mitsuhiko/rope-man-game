@@ -427,6 +427,10 @@ function gameModeTracksStats(mode = gameMode) {
   return normalizeGameMode(mode) !== 'practice';
 }
 
+function currentRunTracksHighScores() {
+  return gameModeTracksStats() && !assistEnabled;
+}
+
 function readGameModePreference() {
   try {
     return normalizeGameMode(localStorage.getItem(GAME_MODE_KEY));
@@ -710,7 +714,7 @@ function storedReplaysForSeed(seedText) {
 }
 
 function saveCurrentSeedReplayHistory() {
-  if (!gameModeTracksStats(gameMode)) return;
+  if (!currentRunTracksHighScores()) return;
   if (!seedReplayStore[gameMode]) seedReplayStore[gameMode] = {};
   if (!memorySeedReplayStore[gameMode]) memorySeedReplayStore[gameMode] = {};
 
@@ -794,7 +798,7 @@ function syncCurrentSeedStats() {
 }
 
 function persistCurrentSeedStats() {
-  if (!gameModeTracksStats()) return;
+  if (!currentRunTracksHighScores()) return;
   seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
   seedStatsByMode[gameMode] = seedStats;
   writeStorageJson(SEED_STATS_KEY, seedStatsByMode);
@@ -841,7 +845,7 @@ function beginSeedAttempt() {
   runHadOverallRecord = false;
   runHadSeedRecord = false;
   runFinalScore = 0;
-  if (!gameModeTracksStats()) {
+  if (!currentRunTracksHighScores()) {
     updateScoreHud();
     return;
   }
@@ -851,7 +855,7 @@ function beginSeedAttempt() {
 }
 
 function updateRecordsForScore(meters) {
-  if (!gameModeTracksStats()) return;
+  if (!currentRunTracksHighScores()) return;
   const score = Math.max(0, Math.floor(meters));
   if (score > best) {
     best = score;

@@ -2,20 +2,20 @@
 
 const CHARACTER_HATS = {
   'backward-cap': { src: 'assets/hats/backward-cap.png', label: 'backward cap', width: 32, height: 22, up: 13, side: 0 },
-  balaclava: { src: 'assets/hats/balaclava.png', label: 'balaclava', width: 38, height: 52, up: 1, side: 0 },
+  balaclava: { src: 'assets/hats/balaclava.png', label: 'balaclava', width: 38, height: 52, up: 1, side: 0, renderHead: false },
   bandana: { src: 'assets/hats/bandana.png', label: 'bandana', width: 44, height: 31, up: 6, side: 4 },
   'baseball-cap-side': { src: 'assets/hats/baseball-cap-side.png', label: 'side cap', width: 48, height: 32, up: 11, side: -5 },
   'baseball-cap': { src: 'assets/hats/baseball-cap.png', label: 'baseball cap', width: 43, height: 28, up: 12, side: -1 },
   'beaded-necklace': { src: 'assets/hats/beaded-necklace.png', label: 'beaded necklace', width: 27, height: 20, up: -2, side: 0 },
   'bird-mask': { src: 'assets/hats/bird-mask.png', label: 'bird mask', width: 20, height: 14, up: -6, side: 0 },
-  bonnet: { src: 'assets/hats/bonnet.png', label: 'bonnet', width: 42, height: 60, up: 8, side: 0 },
+  bonnet: { src: 'assets/hats/bonnet.png', label: 'bonnet', width: 42, height: 60, up: 8, side: 0, renderHead: false },
   'bucket-hat': { src: 'assets/hats/bucket-hat.png', label: 'bucket hat', width: 44, height: 30, up: 20, side: 0 },
   'bushy-mustache': { src: 'assets/hats/bushy-mustache.png', label: 'bushy mustache', width: 40, height: 17, up: -7, side: 0 },
   'cowboy-hat': { src: 'assets/hats/cowboy-hat.png', label: 'cowboy hat', width: 50, height: 31, up: 20, side: 0 },
   crown: { src: 'assets/hats/crown.png', label: 'crown', width: 40, height: 30, up: 18, side: 0 },
   'curled-mustache': { src: 'assets/hats/curled-mustache.png', label: 'curled mustache', width: 42, height: 16, up: -7, side: 0 },
   'curly-hair': { src: 'assets/hats/curly-hair.png', label: 'curly hair', width: 48, height: 38, up: 12, side: 0 },
-  'darth-vader-mask': { src: 'assets/hats/darth-vader-mask.png', label: 'vader mask', width: 54, height: 48, up: 0, side: 0 },
+  'darth-vader-mask': { src: 'assets/hats/darth-vader-mask.png', label: 'vader mask', width: 54, height: 48, up: 0, side: 0, renderHead: false },
   dreadlocks: { src: 'assets/hats/dreadlocks.png', label: 'dreadlocks', width: 38, height: 46, up: 0, side: 0 },
   'feather-headband': { src: 'assets/hats/feather-headband.png', label: 'feather headband', width: 35, height: 34, up: 8, side: 0 },
   flame: { src: 'assets/hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },
@@ -35,7 +35,7 @@ const CHARACTER_HATS = {
   'long-beard': { src: 'assets/hats/long-beard.png', label: 'long beard', width: 32, height: 44, up: -25, side: 0 },
   'long-hair': { src: 'assets/hats/long-hair.png', label: 'long hair', width: 39, height: 45, up: 0, side: 0 },
   'messy-hair': { src: 'assets/hats/messy-hair.png', label: 'messy hair', width: 48, height: 44, up: 12, side: 0 },
-  'ninja-mask': { src: 'assets/hats/ninja-mask.png', label: 'ninja mask', width: 43, height: 43, up: 2, side: 5 },
+  'ninja-mask': { src: 'assets/hats/ninja-mask.png', label: 'ninja mask', width: 43, height: 43, up: 2, side: 5, renderHead: false },
   'parrot-mask': { src: 'assets/hats/parrot-mask.png', label: 'parrot mask', width: 25, height: 18, up: -3, side: 12 },
   'party-hat': { src: 'assets/hats/party-hat.png', label: 'party hat', width: 38, height: 52, up: 33, side: 0 },
   'pirate-hat': { src: 'assets/hats/pirate-hat.png', label: 'pirate hat', width: 50, height: 40, up: 14, side: 0 },
@@ -44,13 +44,13 @@ const CHARACTER_HATS = {
   'pom-beanie': { src: 'assets/hats/pom-beanie.png', label: 'pom beanie', width: 38, height: 41, up: 22, side: 0 },
   'ram-horns': { src: 'assets/hats/ram-horns.png', label: 'ram horns', width: 50, height: 29, up: 16, side: 0 },
   'samurai-helmet': { src: 'assets/hats/samurai-helmet.png', label: 'samurai', width: 48, height: 42, up: 14, side: 0 },
-  'silly-face': { src: 'assets/hats/silly-face.png', label: 'silly face', width: 40, height: 42, up: 0, side: 0 },
-  skull: { src: 'assets/hats/skull.png', label: 'skull', width: 37, height: 42, up: 2, side: 0 },
+  'silly-face': { src: 'assets/hats/silly-face.png', label: 'silly face', width: 40, height: 42, up: 0, side: 0, renderHead: false },
+  skull: { src: 'assets/hats/skull.png', label: 'skull', width: 37, height: 42, up: 2, side: 0, renderHead: false },
   'sombrero': { src: 'assets/hats/sombrero.png', label: 'sombrero', width: 50, height: 33, up: 17, side: 0 },
   'spiky-hair': { src: 'assets/hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 12, side: 1 },
   sunglasses: { src: 'assets/hats/sunglasses.png', label: 'sunglasses', width: 41, height: 14, up: 0, side: 1 },
   'swoop-hair': { src: 'assets/hats/swoop-hair.png', label: 'swoop hair', width: 48, height: 34, up: 11, side: -2 },
-  teeth: { src: 'assets/hats/teeth.png', label: 'teeth', width: 40, height: 54, up: 4, side: 0 },
+  teeth: { src: 'assets/hats/teeth.png', label: 'teeth', width: 40, height: 54, up: 4, side: 0, renderHead: false },
   'top-hat': { src: 'assets/hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 20, side: 0 },
   'tv-head': { src: 'assets/hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
   'viking-beard': { src: 'assets/hats/viking-beard.png', label: 'viking beard', width: 35, height: 49, up: -8, side: 0 },
@@ -97,6 +97,12 @@ function characterInkColor() {
 function hatInkColor() {
   const colorId = characterAppearance.hatUsesCustomColor ? characterAppearance.hatColor : DEFAULT_CHARACTER_COLOR;
   return characterColorForTheme(colorId);
+}
+
+function selectedHatRendersHead() {
+  const hatId = selectedHatId();
+  const spec = hatId && CHARACTER_HATS[hatId];
+  return !spec || spec.renderHead !== false;
 }
 
 function accessoryImageForHat(hatId) {
@@ -350,11 +356,13 @@ function drawStickman() {
   line(kneeB, footB);
   ctx.stroke();
 
-  ctx.fillStyle = PAPER;
-  ctx.beginPath();
-  ctx.arc(sx(head.x), sy(head.y), headR, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
+  if (selectedHatRendersHead()) {
+    ctx.fillStyle = PAPER;
+    ctx.beginPath();
+    ctx.arc(sx(head.x), sy(head.y), headR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
 
   drawCharacterHat(core);
 

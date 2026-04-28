@@ -26,11 +26,11 @@ and see how many meters you can survive.
 
 ## Controls
 
-### Keyboard / mouse
+### Keyboard
 
 | Action | Control |
 | --- | --- |
-| Hook / release rope | `Space` or click / tap the game |
+| Hook / release rope | `Space` |
 | Swing left / right | `A` / `D` or `←` / `→` |
 | Reel rope in / out | `W` / `S` or `↑` / `↓` |
 | Cycle zoom level (saved between sessions) | `+` or `=` |

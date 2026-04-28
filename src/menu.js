@@ -179,7 +179,7 @@ function syncCustomizationUi() {
       button.classList.toggle('is-affordable', isAffordable);
       button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
       button.setAttribute('aria-disabled', hatId && !isOwned && !isAffordable ? 'true' : 'false');
-      if (costEl) costEl.textContent = !hatId ? 'free' : (isOwned ? 'owned' : `${HAT_COST}₶`);
+      if (costEl) costEl.textContent = !hatId ? 'free' : (isOwned ? 'owned' : `${HAT_COST}¢`);
     }
   }
   if (startColorGridEl) {
@@ -219,9 +219,9 @@ function showHatPurchasePopover(hatId, returnFocus = null) {
   }
   if (startPurchaseTitleEl) startPurchaseTitleEl.textContent = `buy ${hatLabel(hatId)}?`;
   if (startPurchaseCopyEl) {
-    startPurchaseCopyEl.textContent = `Spend ${HAT_COST}₶? You will have ${Math.max(0, coinBalance - HAT_COST)}₶ left.`;
+    startPurchaseCopyEl.textContent = `Spend ${HAT_COST}¢? You will have ${Math.max(0, coinBalance - HAT_COST)}¢ left.`;
   }
-  if (startPurchaseConfirmEl) startPurchaseConfirmEl.textContent = `buy ${HAT_COST}₶`;
+  if (startPurchaseConfirmEl) startPurchaseConfirmEl.textContent = `buy ${HAT_COST}¢`;
   setPurchasePopoverVisible(true, { restoreFocus: false });
   return true;
 }
@@ -336,10 +336,10 @@ function makeHatChoice(hatId) {
 
   const cost = document.createElement('span');
   cost.className = 'hat-choice-cost';
-  cost.textContent = !hatId ? 'free' : (hatIsOwned(hatId) ? 'owned' : `${HAT_COST}₶`);
+  cost.textContent = !hatId ? 'free' : (hatIsOwned(hatId) ? 'owned' : `${HAT_COST}¢`);
 
   button.append(preview, label, cost);
-  button.setAttribute('aria-label', hatId ? `${hatLabel(hatId)}, ${hatIsOwned(hatId) ? 'owned' : `${HAT_COST} currency`}` : hatLabel(hatId));
+  button.setAttribute('aria-label', hatId ? `${hatLabel(hatId)}, ${hatIsOwned(hatId) ? 'owned' : `${HAT_COST} cents`}` : hatLabel(hatId));
   bindHatChoiceButton(button, () => selectHat(hatId, button));
   return button;
 }
