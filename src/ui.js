@@ -262,36 +262,37 @@ function setupCrashControls() {
 }
 
 function setupTouchControls() {
-  if (touchPauseEl) {
-    touchPauseEl.addEventListener('pointerdown', (e) => {
-      if (!mobileControlPointerAllowed(e)) return;
+  let topButtonPointerHandledAt = 0;
+  const activateTopButton = (action) => {
+    if (!gameStarted || gameOver || gamePaused || replayMode) return;
+    primeGameAudio();
+    action();
+  };
+  const bindTopButton = (button, action) => {
+    if (!button) return;
+    button.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
       e.preventDefault();
       e.stopPropagation();
-      if (!gameStarted || gameOver || gamePaused || replayMode) return;
-      primeGameAudio();
-      playBingSound();
-      pauseGame();
+      topButtonPointerHandledAt = Date.now();
+      activateTopButton(action);
     }, { passive: false });
-    touchPauseEl.addEventListener('click', (e) => {
+    button.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (Date.now() - topButtonPointerHandledAt < 520) return;
+      activateTopButton(action);
     });
-  }
+  };
 
-  if (touchSpawnLockEl) {
-    touchSpawnLockEl.addEventListener('pointerdown', (e) => {
-      if (!mobileControlPointerAllowed(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (!gameStarted || gameOver || gamePaused || replayMode) return;
-      primeGameAudio();
-      if (togglePracticeSpawnLock()) playBingSound();
-    }, { passive: false });
-    touchSpawnLockEl.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-  }
+  bindTopButton(touchPauseEl, () => {
+    playBingSound();
+    pauseGame();
+  });
+
+  bindTopButton(touchSpawnLockEl, () => {
+    if (togglePracticeSpawnLock()) playBingSound();
+  });
 
   if (touchActionEl) {
     touchActionEl.addEventListener('pointerdown', (e) => {
