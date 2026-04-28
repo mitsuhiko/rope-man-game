@@ -57,14 +57,15 @@ const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
 const crashHelpEl = document.getElementById('crash-help');
 const AUDIO_FILES = {
-  gameOver: { url: 'assets/game-over.mp3', volume: 0.252 },
-  hook: { url: 'assets/hook-swoosh.wav', volume: 0.38 },
+  gameOver: { url: 'assets/game-over.mp3', volume: 0.4 },
+  hook: { url: 'assets/hook-swoosh.wav', volume: 0.25 },
   hookRelease: { url: 'assets/hook-release.wav', volume: 0.25 },
-  coin: { url: 'assets/coin.wav', volume: 0.82 },
-  saw: { url: 'assets/saw.wav', volume: 0.6 },
-  swingA: { url: 'assets/swing-a.wav', volume: 0.95 },
-  swingB: { url: 'assets/swing-b.wav', volume: 0.95 },
-  swingC: { url: 'assets/swing-c.wav', volume: 0.95 },
+  coin: { url: 'assets/coin.wav', volume: 0.7 },
+  bing: { url: 'assets/bing.wav', volume: 0.3 },
+  saw: { url: 'assets/saw.wav', volume: 0.5 },
+  swingA: { url: 'assets/swing-a.wav', volume: 0.5 },
+  swingB: { url: 'assets/swing-b.wav', volume: 0.5 },
+  swingC: { url: 'assets/swing-c.wav', volume: 0.5 },
 };
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
@@ -993,6 +994,8 @@ const sawSoundLoops = new Map();
 let nextSwingSoundAt = 0;
 let lastSwingAngle = null;
 let lastSwingAnchorId = null;
+let lastSwingSpeed = 0;
+let lastSwingSpeedTrend = 0;
 const audioBuffers = {};
 let furthestX = 0;
 let scoreStartX = 0;

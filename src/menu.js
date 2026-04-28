@@ -91,12 +91,18 @@ function bindStartButton(button, action) {
   button.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    primeGameAudio();
+    playBingSound();
     action();
   }, { passive: false });
   button.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.detail === 0) action();
+    if (e.detail === 0) {
+      primeGameAudio();
+      playBingSound();
+      action();
+    }
   });
 }
 
@@ -285,6 +291,8 @@ function bindHatChoiceButton(button, action) {
     if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) return;
     e.preventDefault();
     e.stopPropagation();
+    primeGameAudio();
+    playBingSound();
     action();
   });
   button.addEventListener('pointercancel', () => {
@@ -293,7 +301,11 @@ function bindHatChoiceButton(button, action) {
   button.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.detail === 0) action();
+    if (e.detail === 0) {
+      primeGameAudio();
+      playBingSound();
+      action();
+    }
   });
 }
 

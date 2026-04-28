@@ -235,6 +235,7 @@ function setupCrashControls() {
       e.preventDefault();
       e.stopPropagation();
       primeGameAudio();
+      playBingSound();
       action();
     }, { passive: false });
     button.addEventListener('click', (e) => {
@@ -242,6 +243,7 @@ function setupCrashControls() {
       e.stopPropagation();
       if (e.detail === 0) {
         primeGameAudio();
+        playBingSound();
         action();
       }
     });

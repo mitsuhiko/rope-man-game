@@ -98,37 +98,57 @@ function playCoinSound() {
   playBufferedSound('coin');
 }
 
+function playBingSound() {
+  playBufferedSound('bing');
+}
+
 function playSwingSound() {
-  if (!soundEnabled || !player.attached || !player.anchor || gameOver || gamePaused || replayMode) {
+  const active = soundEnabled && gameStarted && !gameOver && !gamePaused && !replayMode;
+  if (!active) {
     lastSwingAngle = null;
     lastSwingAnchorId = null;
+    lastSwingSpeed = 0;
+    lastSwingSpeedTrend = 0;
     return;
   }
 
-  const anchorId = player.anchor.id || `${Math.round(player.anchor.x)}:${Math.round(player.anchor.y)}`;
-  const angle = player.angle;
-  if (lastSwingAnchorId !== anchorId || lastSwingAngle === null) {
+  const linearSpeed = hypot(player.vx, player.vy);
+  const tangentSpeed = player.attached ? Math.abs(player.angularVelocity * player.ropeLength) : 0;
+  const swingSpeed = Math.max(linearSpeed, tangentSpeed);
+  const speedDelta = swingSpeed - lastSwingSpeed;
+  const previousTrend = lastSwingSpeedTrend;
+  const currentTrend = speedDelta > 8 ? 1 : (speedDelta < -8 ? -1 : previousTrend);
+
+  let bottomTrigger = false;
+  if (player.attached && player.anchor) {
+    const anchorId = player.anchor.id || `${Math.round(player.anchor.x)}:${Math.round(player.anchor.y)}`;
+    const angle = player.angle;
+    if (lastSwingAnchorId === anchorId && lastSwingAngle !== null) {
+      const movingTowardBottom = Math.abs(angle) < Math.abs(lastSwingAngle) - 0.002;
+      const enteringWhooshZone = Math.abs(angle) < 0.26 && Math.abs(lastSwingAngle) >= 0.26;
+      const crossedBottom = (lastSwingAngle < 0 && angle >= 0) || (lastSwingAngle > 0 && angle <= 0);
+      bottomTrigger = (enteringWhooshZone && movingTowardBottom) || crossedBottom;
+    }
     lastSwingAnchorId = anchorId;
     lastSwingAngle = angle;
-    return;
+  } else {
+    lastSwingAnchorId = null;
+    lastSwingAngle = null;
   }
 
-  // A pendulum whoosh happens at the bottom of the arc where velocity peaks,
-  // not continuously through the swing.  In this game's angle convention,
-  // angle 0 is directly below the anchor, so play only when crossing 0.
-  const crossedBottom = (lastSwingAngle < 0 && angle >= 0) || (lastSwingAngle > 0 && angle <= 0);
-  const nearBottom = Math.abs(angle) < 0.42 || Math.abs(lastSwingAngle) < 0.42;
-  lastSwingAngle = angle;
-  if (!crossedBottom || !nearBottom) return;
+  // Also catch fast airborne/whip motion just before the peak: when airspeed is
+  // already high and the positive acceleration starts flattening out.
+  const speedFlatteningTrigger = previousTrend > 0 && speedDelta > -8 && speedDelta < 18 && swingSpeed > 420;
+  const speedPeakTrigger = speedFlatteningTrigger || (previousTrend > 0 && currentTrend < 0 && lastSwingSpeed > 360);
+  lastSwingSpeed = swingSpeed;
+  lastSwingSpeedTrend = currentTrend;
 
   const context = startGameAudioLoad();
   if (!context || context.currentTime < nextSwingSoundAt) return;
+  if (!bottomTrigger && !speedPeakTrigger) return;
 
-  const speed = hypot(player.vx, player.vy);
-  const tangentSpeed = Math.abs(player.angularVelocity * player.ropeLength);
-  const swingSpeed = Math.max(speed, tangentSpeed);
-  const intensity = smoothstep01((swingSpeed - 170) / 820);
-  if (intensity <= 0.02) return;
+  const intensity = smoothstep01((swingSpeed - 190) / 860);
+  if (intensity <= 0.025) return;
 
   const names = ['swingA', 'swingB', 'swingC'];
   const name = names[Math.floor(Math.random() * names.length)];
@@ -138,13 +158,13 @@ function playSwingSound() {
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = buffer;
-  source.playbackRate.value = clamp(0.76 + swingSpeed / 980, 0.76, 1.95);
-  gain.gain.value = AUDIO_FILES[name].volume * (0.20 + intensity * 0.80);
+  source.playbackRate.value = clamp(0.74 + swingSpeed / 980, 0.74, 1.95);
+  gain.gain.value = AUDIO_FILES[name].volume * (0.16 + intensity * 0.84);
   source.connect(gain);
   gain.connect(context.destination);
   try {
     source.start(0);
-    nextSwingSoundAt = context.currentTime + 0.42;
+    nextSwingSoundAt = context.currentTime + clamp(0.34 + (1 - intensity) * 0.28, 0.34, 0.62);
   } catch (_) {
     // Ignore transient audio start failures.
   }

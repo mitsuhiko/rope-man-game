@@ -105,6 +105,8 @@ function reset(options = {}) {
   nextSwingSoundAt = 0;
   lastSwingAngle = null;
   lastSwingAnchorId = null;
+  lastSwingSpeed = 0;
+  lastSwingSpeedTrend = 0;
   cameraX = player.x - cameraViewW() * 0.42;
   cameraY = player.y - cameraViewH() * 0.52;
   resetEscapeWave();
@@ -1473,7 +1475,11 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') {
     e.preventDefault();
-    if (!gameOver) togglePause();
+    if (!gameOver) {
+      primeGameAudio();
+      playBingSound();
+      togglePause();
+    }
     return;
   }
   if (isCameraZoomKey(e)) {
@@ -1484,20 +1490,25 @@ window.addEventListener('keydown', (e) => {
   primeGameAudio();
   if (gamePaused && e.code === 'KeyR') {
     e.preventDefault();
+    playBingSound();
     retryCurrentSeed();
   } else if (gamePaused && e.code === 'KeyH') {
     e.preventDefault();
+    playBingSound();
     returnToMainMenu();
   } else if (gamePaused) {
     e.preventDefault();
   } else if (gameOver && (e.code === 'Space' || e.code === 'KeyR')) {
     e.preventDefault();
+    playBingSound();
     retryCurrentSeed();
   } else if (gameOver && e.code === 'KeyP') {
     e.preventDefault();
+    playBingSound();
     startCrashReplay();
   } else if (gameOver && e.code === 'KeyH') {
     e.preventDefault();
+    playBingSound();
     returnToMainMenu();
   } else if (e.code === 'Space') {
     e.preventDefault();

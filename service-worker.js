@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v32';
+const CACHE_NAME = 'rope-man-app-v35';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -19,6 +19,7 @@ const CORE_ASSETS = [
   "assets/hook-swoosh.wav",
   "assets/hook-release.wav",
   "assets/coin.wav",
+  "assets/bing.wav",
   "assets/saw.wav",
   "assets/swing-a.wav",
   "assets/swing-b.wav",
