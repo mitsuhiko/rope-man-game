@@ -44,6 +44,7 @@ const startPurchaseCopyEl = document.getElementById('start-purchase-copy');
 const startPurchaseConfirmEl = document.getElementById('start-purchase-confirm');
 const startPurchaseCancelEl = document.getElementById('start-purchase-cancel');
 const touchControlsEl = document.querySelector('.touch-controls');
+const touchPauseEl = document.getElementById('touch-pause');
 const touchActionEl = document.getElementById('touch-action');
 const touchJoystickEl = document.getElementById('touch-joystick');
 const touchStickEl = document.getElementById('touch-stick');

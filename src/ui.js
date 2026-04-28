@@ -258,6 +258,21 @@ function setupCrashControls() {
 }
 
 function setupTouchControls() {
+  if (touchPauseEl) {
+    touchPauseEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!gameStarted || gameOver || gamePaused || replayMode) return;
+      primeGameAudio();
+      playBingSound();
+      pauseGame();
+    }, { passive: false });
+    touchPauseEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
+
   if (touchActionEl) {
     touchActionEl.addEventListener('pointerdown', (e) => {
       if (stopReplayFromMobileTap(e)) return;

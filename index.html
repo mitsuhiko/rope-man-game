@@ -894,6 +894,52 @@
       z-index: 3;
     }
 
+    .touch-pause {
+      position: fixed;
+      left: calc(env(safe-area-inset-left, 0px) + 14px);
+      top: calc(env(safe-area-inset-top, 0px) + 14px);
+      box-sizing: border-box;
+      min-width: 66px;
+      height: 46px;
+      padding: 0 12px;
+      border: 3px solid var(--touch-ink);
+      border-radius: 15px;
+      background: var(--hud-bg);
+      color: var(--touch-ink);
+      appearance: none;
+      -webkit-appearance: none;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      text-transform: lowercase;
+      pointer-events: auto;
+      touch-action: manipulation;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      cursor: pointer;
+    }
+
+    .touch-pause::before {
+      content: "Ⅱ";
+      display: inline-block;
+      margin-right: 5px;
+      font-size: 13px;
+      transform: translateY(-1px);
+    }
+
+    .touch-pause:active {
+      border-color: var(--ink);
+      color: var(--ink);
+      transform: translateY(1px) rotate(-0.4deg);
+    }
+
+    .game-shell.is-crashed .touch-pause,
+    .game-shell.is-replaying .touch-pause {
+      display: none;
+    }
+
     .touch-action,
     .touch-joystick {
       position: fixed;
@@ -1457,6 +1503,7 @@
       <div class="score-meta score-attempts">attempt <span id="attempts">0</span></div>
     </section>
     <div class="touch-controls" aria-label="Touch controls">
+      <button id="touch-pause" class="touch-pause" type="button" aria-label="Pause game">pause</button>
       <button id="touch-action" class="touch-action" type="button" aria-label="Hook or unhook"></button>
       <div id="touch-joystick" class="touch-joystick" aria-label="Move and reel joystick">
         <div class="touch-joystick-deadzone"></div>
