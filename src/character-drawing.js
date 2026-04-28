@@ -1,6 +1,7 @@
 // Stickman drawing and character customization slots.
 
 const CHARACTER_HATS = {
+  'alien-dome': { src: 'assets/hats/alien-dome.png', label: 'alien dome', width: 44, height: 50, up: 14, side: -15, renderHead: false },
   'backward-cap': { src: 'assets/hats/backward-cap.png', label: 'backward cap', width: 32, height: 22, up: 13, side: 0 },
   balaclava: { src: 'assets/hats/balaclava.png', label: 'balaclava', width: 38, height: 52, up: 1, side: 0, renderHead: false },
   bandana: { src: 'assets/hats/bandana.png', label: 'bandana', width: 44, height: 31, up: 6, side: 4 },
@@ -20,6 +21,7 @@ const CHARACTER_HATS = {
   'feather-headband': { src: 'assets/hats/feather-headband.png', label: 'feather headband', width: 35, height: 34, up: 8, side: 0 },
   flame: { src: 'assets/hats/flame.png', label: 'flame', width: 32, height: 45, up: 32, side: 0 },
   'flame-hair': { src: 'assets/hats/flame-hair.png', label: 'flame hair', width: 42, height: 50, up: 25, side: 0 },
+  'fishbowl-face': { src: 'assets/hats/fishbowl-face.png', label: 'fishbowl', width: 52, height: 49, up: 7, side: -10, renderHead: false },
   'frog-face': { src: 'assets/hats/frog-face.png', label: 'frog face', width: 43, height: 27, up: 0, side: 0 },
   'full-beard': { src: 'assets/hats/full-beard.png', label: 'full beard', width: 42, height: 38, up: -22, side: 0 },
   'gentleman-mustache': { src: 'assets/hats/gentleman-mustache.png', label: 'gentleman mustache', width: 42, height: 23, up: -12, side: 0 },
@@ -32,6 +34,7 @@ const CHARACTER_HATS = {
   'horseshoe-mustache': { src: 'assets/hats/horseshoe-mustache.png', label: 'horseshoe mustache', width: 34, height: 25, up: -9, side: 0 },
   'jagged-beard': { src: 'assets/hats/jagged-beard.png', label: 'jagged beard', width: 32, height: 26, up: -10, side: 0 },
   'jester-hat': { src: 'assets/hats/jester-hat.png', label: 'jester hat', width: 50, height: 35, up: 18, side: 0 },
+  'kebab-face': { src: 'assets/hats/kebab-face.png', label: 'döner', width: 31, height: 55, up: 20, side: -15, renderHead: false },
   'long-beard': { src: 'assets/hats/long-beard.png', label: 'long beard', width: 32, height: 44, up: -25, side: 0 },
   'long-hair': { src: 'assets/hats/long-hair.png', label: 'long hair', width: 39, height: 45, up: 0, side: 0 },
   'messy-hair': { src: 'assets/hats/messy-hair.png', label: 'messy hair', width: 48, height: 44, up: 12, side: 0 },
@@ -54,9 +57,11 @@ const CHARACTER_HATS = {
   'top-hat': { src: 'assets/hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 20, side: 0 },
   'troll-face': { src: 'assets/hats/troll-face.png', label: 'troll face', width: 47, height: 39, up: 0, side: 0, renderHead: false },
   'tv-head': { src: 'assets/hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
+  'twin-face': { src: 'assets/hats/twin-face.png', label: 'twins', width: 55, height: 35, up: 8, side: -14, renderHead: false },
   'viking-beard': { src: 'assets/hats/viking-beard.png', label: 'viking beard', width: 35, height: 49, up: -8, side: 0 },
   'viking-helmet': { src: 'assets/hats/viking-helmet.png', label: 'viking', width: 48, height: 35, up: 21, side: 0 },
   'walrus-mustache': { src: 'assets/hats/walrus-mustache.png', label: 'walrus mustache', width: 43, height: 20, up: -5, side: 0 },
+  'apple-face': { src: 'assets/hats/apple-face.png', label: 'apple', width: 38, height: 40, up: 7, side: -4, renderHead: false },
   'wizard-hat': { src: 'assets/hats/wizard-hat.png', label: 'wizard hat', width: 50, height: 46, up: 23, side: 1 },
 };
 const CHARACTER_HAT_ORDER = Object.keys(CHARACTER_HATS);

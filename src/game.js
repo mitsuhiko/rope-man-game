@@ -1691,12 +1691,7 @@ function update(dt) {
   obstacles = obstacles.filter(o => (o.x + (o.w || o.r || 0)) > cameraX - 1800);
   pruneCoins();
   pruneTerrain();
-  for (const s of bgShapes) {
-    const sx = s.x - cameraX * s.layer;
-    if (sx < -180) {
-      Object.assign(s, makeBgShape(cameraX * s.layer + viewW + backgroundRand(100, 900)));
-    }
-  }
+  updateBackgroundShapes(viewW);
 
   refreshScoreAndRecords();
 }

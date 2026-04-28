@@ -301,7 +301,7 @@ function hatExists(hatId) {
 }
 
 function hatIsOwned(hatId) {
-  return !hatId || ownedHatIds.has(hatId);
+  return !hatId || (DEV_UNLOCK_HATS && hatExists(hatId)) || ownedHatIds.has(hatId);
 }
 
 function canAffordHat(hatId) {
@@ -756,12 +756,18 @@ let assistEnabled = readStorageBoolean(ASSIST_ENABLED_KEY, false);
 applyVisualTheme(colorTheme);
 
 const initialSearchParams = new URLSearchParams(window.location.search);
+const DEV_UNLOCK_HATS = initialSearchParams.get('dev') === '1';
 const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
 const hasRequestedSeed = requestedSeedValue !== null;
 let gameSeedValue = requestedSeedValue ?? randomSeedValue();
 let gameSeedText = seedTextFromValue(gameSeedValue);
 let rngState = gameSeedValue;
 let backgroundRngState = gameSeedValue;
+const BACKGROUND_STYLE_GEOMETRIC = 'geometric';
+const BACKGROUND_STYLE_STARS = 'stars';
+const BACKGROUND_STYLE_SELECTION_SALT = 0x9e3779b9;
+let backgroundStyleRngState = normalizeSeedValue(gameSeedValue ^ BACKGROUND_STYLE_SELECTION_SALT);
+let backgroundStyleId = BACKGROUND_STYLE_GEOMETRIC;
 let coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
 let gameMode = readGameModePreference();
 let gameStarted = false;
@@ -901,6 +907,8 @@ function setGameSeed(seedValue, options = {}) {
   gameSeedText = seedTextFromValue(gameSeedValue);
   rngState = gameSeedValue;
   backgroundRngState = gameSeedValue;
+  backgroundStyleRngState = normalizeSeedValue(gameSeedValue ^ BACKGROUND_STYLE_SELECTION_SALT);
+  backgroundStyleId = chooseSeedBackgroundStyle();
   coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
   syncCurrentSeedStats();
   if (previousSeedValue !== gameSeedValue && typeof clearReplayHistory === 'function') {
@@ -922,6 +930,7 @@ const CAMERA_ZOOM_LEVELS = [1, 0.75, 0.55];
 let cameraZoomLevel = normalizeCameraZoomLevel(readStorageNumber(CAMERA_ZOOM_LEVEL_KEY));
 let cameraZoom = CAMERA_ZOOM_LEVELS[cameraZoomLevel];
 const BACKGROUND_SHAPE_COUNT = 80;
+const BACKGROUND_STAR_COUNT = 850;
 
 function normalizeCameraZoomLevel(level) {
   const count = CAMERA_ZOOM_LEVELS.length;
@@ -1162,6 +1171,15 @@ function backgroundRandom() {
   return backgroundRngState / 0x100000000;
 }
 
+function backgroundStyleRandom() {
+  backgroundStyleRngState = nextRandomState(backgroundStyleRngState);
+  return backgroundStyleRngState / 0x100000000;
+}
+
+function chooseSeedBackgroundStyle() {
+  return backgroundStyleRandom() < 0.5 ? BACKGROUND_STYLE_GEOMETRIC : BACKGROUND_STYLE_STARS;
+}
+
 function coinRandom() {
   coinRngState = nextRandomState(coinRngState);
   return coinRngState / 0x100000000;
@@ -1176,11 +1194,13 @@ function skipWorldRandomCalls(count) {
 function resetRandomStreams() {
   rngState = gameSeedValue;
   backgroundRngState = gameSeedValue;
+  backgroundStyleRngState = normalizeSeedValue(gameSeedValue ^ BACKGROUND_STYLE_SELECTION_SALT);
+  backgroundStyleId = chooseSeedBackgroundStyle();
   coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
   // Background seeding used to consume the shared world RNG before terrain,
   // obstacles, and anchors were generated. Keep that initial offset so the
-  // existing seed maps stay aligned, then keep scrolling background cosmetics
-  // on their own stream so camera/input timing cannot perturb the world map.
+  // existing seed maps stay aligned. Current background type selection and
+  // scrolling cosmetics use separate RNG streams so they cannot perturb maps.
   skipWorldRandomCalls(LEGACY_INITIAL_BACKGROUND_RANDOM_CALLS);
 }
 

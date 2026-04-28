@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v40';
+const CACHE_NAME = 'rope-man-app-v42';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -6,6 +6,7 @@ const CORE_ASSETS = [
   "assets/manifest.webmanifest",
   "assets/icons/rope-man-192.png",
   "assets/icons/rope-man-512.png",
+  "src/background.js",
   "src/audio.js",
   "src/character-drawing.js",
   "src/character.js",
@@ -24,6 +25,7 @@ const CORE_ASSETS = [
   "assets/swing-a.wav",
   "assets/swing-b.wav",
   "assets/swing-c.wav",
+  "assets/hats/alien-dome.png",
   "assets/hats/backward-cap.png",
   "assets/hats/balaclava.png",
   "assets/hats/bandana.png",
@@ -43,6 +45,7 @@ const CORE_ASSETS = [
   "assets/hats/feather-headband.png",
   "assets/hats/flame-hair.png",
   "assets/hats/flame.png",
+  "assets/hats/fishbowl-face.png",
   "assets/hats/frog-face.png",
   "assets/hats/full-beard.png",
   "assets/hats/gentleman-mustache.png",
@@ -55,6 +58,7 @@ const CORE_ASSETS = [
   "assets/hats/horseshoe-mustache.png",
   "assets/hats/jagged-beard.png",
   "assets/hats/jester-hat.png",
+  "assets/hats/lantern-face.png",
   "assets/hats/long-beard.png",
   "assets/hats/long-hair.png",
   "assets/hats/messy-hair.png",
@@ -77,9 +81,11 @@ const CORE_ASSETS = [
   "assets/hats/top-hat.png",
   "assets/hats/troll-face.png",
   "assets/hats/tv-head.png",
+  "assets/hats/twin-face.png",
   "assets/hats/viking-beard.png",
   "assets/hats/viking-helmet.png",
   "assets/hats/walrus-mustache.png",
+  "assets/hats/apple-face.png",
   "assets/hats/wizard-hat.png"
 ];
 

@@ -1,23 +1,5 @@
 // Level generation, terrain, obstacles, collisions, and world rendering.
 
-function seedBackground() {
-  for (let i = 0; i < BACKGROUND_SHAPE_COUNT; i++) {
-    bgShapes.push(makeBgShape(backgroundRand(-300, Math.max(W, cameraViewW()) * 5)));
-  }
-}
-
-function makeBgShape(x) {
-  return {
-    x,
-    y: backgroundRand(80, Math.max(180, H - 120)),
-    size: backgroundRand(18, 86),
-    sides: Math.floor(backgroundRand(0, 4)),
-    shadeIndex: backgroundRandom() < 0.5 ? 0 : 1,
-    layer: backgroundRandom() < 0.55 ? 0.28 : 0.48,
-    rot: backgroundRand(0, Math.PI),
-  };
-}
-
 function addAnchor(x, y) {
   anchors.push({ id: anchors.length + 1, x, y, r: 8 });
 }
@@ -683,43 +665,6 @@ function drawDebugHitboxes() {
   ctx.lineTo(cameraViewW(), sy(LOST_BELOW_Y));
   ctx.stroke();
 
-  ctx.restore();
-}
-
-function drawBackground() {
-  ctx.save();
-  for (const s of bgShapes) {
-    const x = s.x - cameraX * s.layer;
-    const y = s.y - cameraY * s.layer * 0.35;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(s.rot + time * 0.02 * (s.layer + 0.3));
-    ctx.strokeStyle = s.shadeIndex === 0 ? BG1 : BG2;
-    ctx.fillStyle = 'transparent';
-    ctx.lineWidth = 2;
-    if (s.sides === 0) {
-      ctx.strokeRect(-s.size / 2, -s.size / 2, s.size, s.size);
-    } else if (s.sides === 1) {
-      ctx.beginPath();
-      ctx.arc(0, 0, s.size / 2, 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (s.sides === 2) {
-      ctx.beginPath();
-      ctx.moveTo(0, -s.size / 2);
-      ctx.lineTo(s.size / 2, s.size / 2);
-      ctx.lineTo(-s.size / 2, s.size / 2);
-      ctx.closePath();
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(-s.size / 2, 0);
-      ctx.lineTo(s.size / 2, 0);
-      ctx.moveTo(0, -s.size / 2);
-      ctx.lineTo(0, s.size / 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
   ctx.restore();
 }
 
