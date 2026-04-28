@@ -16,6 +16,9 @@ const ASSIST_REEL_MIN_SURVIVAL_GAIN = 0.26;
 const ASSIST_REEL_SAFE_BONUS = 0.48;
 const ASSIST_REEL_MIN_LENGTH_CHANGE = 14;
 const ASSIST_REEL_INPUT_DEAD_ZONE = 0.35;
+const ASSIST_ROPE_MOTION_LOOKAHEAD = 1.65;
+const ASSIST_ROPE_WARNING_LOOKAHEAD = ASSIST_ROPE_MOTION_LOOKAHEAD;
+const ASSIST_ROPE_WARNING_RADIUS = 31;
 const PRACTICE_BACK_ANCHOR_COUNT = 2;
 const PRACTICE_BACK_ANCHOR_START_GAP = 260;
 const PRACTICE_BACK_ANCHOR_SPACING = 320;
@@ -24,6 +27,9 @@ const PRACTICE_BACK_ANCHOR_NEAR_Y = 150;
 let assistCue = null;
 let assistReelCue = null;
 let practiceCheckpoint = null;
+let practiceCheckpointHistory = [];
+let practiceCheckpointIndex = 0;
+let practiceRestoredFromCheckpoint = false;
 
 function reset(options = {}) {
   const tracksStats = gameModeTracksStats(gameMode);
@@ -343,21 +349,71 @@ function capturePracticeState() {
 
 function resetPracticeCheckpoints() {
   practiceCheckpoint = null;
+  practiceCheckpointHistory = [];
+  practiceCheckpointIndex = 0;
+  practiceRestoredFromCheckpoint = false;
   if (!gameModeUsesPracticeCheckpoints()) return;
 
   ensurePracticeBackAnchors(player.anchor);
   practiceCheckpoint = capturePracticeState();
+  practiceCheckpointHistory = [practiceCheckpoint];
+}
+
+function samePracticeAnchor(a, b) {
+  if (!a || !b) return false;
+  const aid = Number(a.id) || 0;
+  const bid = Number(b.id) || 0;
+  if (aid && bid && aid === bid) return true;
+  return Math.abs((Number(a.x) || 0) - (Number(b.x) || 0)) < 0.001 &&
+    Math.abs((Number(a.y) || 0) - (Number(b.y) || 0)) < 0.001;
+}
+
+function practiceSnapshotAnchor(snapshot) {
+  return snapshot && snapshot.player ? snapshot.player.anchor : null;
+}
+
+function setPracticeCheckpointIndex(index) {
+  if (!practiceCheckpointHistory.length) {
+    practiceCheckpointIndex = 0;
+    practiceCheckpoint = null;
+    return;
+  }
+  practiceCheckpointIndex = Math.max(0, Math.min(practiceCheckpointHistory.length - 1, Math.floor(Number(index) || 0)));
+  practiceCheckpoint = practiceCheckpointHistory[practiceCheckpointIndex] || null;
+}
+
+function pushPracticeCheckpoint(snapshot) {
+  if (!snapshot) return practiceCheckpointHistory.length - 1;
+  const lastIndex = practiceCheckpointHistory.length - 1;
+  const last = practiceCheckpointHistory[lastIndex];
+  if (last && samePracticeAnchor(practiceSnapshotAnchor(last), practiceSnapshotAnchor(snapshot))) {
+    practiceCheckpointHistory[lastIndex] = snapshot;
+    return lastIndex;
+  }
+
+  practiceCheckpointHistory.push(snapshot);
+  if (practiceCheckpointHistory.length > 12) practiceCheckpointHistory.shift();
+  return practiceCheckpointHistory.length - 1;
 }
 
 function rememberPracticeReleaseCheckpoint() {
   if (!gameModeUsesPracticeCheckpoints() || replayMode) return;
   ensurePracticeBackAnchors(player.anchor);
-  practiceCheckpoint = capturePracticeState();
 }
 
 function markPracticeHook(anchor = player.anchor) {
   if (!gameModeUsesPracticeCheckpoints() || replayMode) return;
   ensurePracticeBackAnchors(anchor);
+
+  // Practice respawns at the hook state one anchor before the latest hook, not
+  // at the moment you let go.  Release-time snapshots can already be doomed by
+  // terrain or obstacles, which is what caused unrecoverable respawn loops.
+  if (practiceRestoredFromCheckpoint) {
+    practiceCheckpointHistory = practiceCheckpointHistory.slice(0, practiceCheckpointIndex + 1);
+  }
+  const hookIndex = pushPracticeCheckpoint(capturePracticeState());
+  setPracticeCheckpointIndex(Math.max(0, hookIndex - 1));
+  practiceRestoredFromCheckpoint = false;
 }
 
 function practiceAnchorFromSnapshot(anchor) {
@@ -447,7 +503,17 @@ function resetPracticeAfterDeath() {
     return true;
   }
 
-  return restorePracticeCheckpoint(practiceCheckpoint);
+  // If the restored checkpoint itself leads to another death before a new hook
+  // is reached, do not trap the player there forever. Back up through the hook
+  // history one anchor at a time until recovery is possible.
+  if (practiceRestoredFromCheckpoint && practiceCheckpointIndex > 0) {
+    practiceCheckpointHistory = practiceCheckpointHistory.slice(0, practiceCheckpointIndex);
+    setPracticeCheckpointIndex(practiceCheckpointHistory.length - 1);
+  }
+
+  const restored = restorePracticeCheckpoint(practiceCheckpoint);
+  practiceRestoredFromCheckpoint = restored;
+  return restored;
 }
 
 function startReplayRecording() {
@@ -945,24 +1011,48 @@ function assistPointAtTime(points, targetT) {
   return points[points.length - 1];
 }
 
-function assistPointHitsHazardAt(point, futureT = point ? point.t : 0, radius = ASSIST_SAFE_RADIUS) {
-  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return true;
-  if (point.y > LOST_BELOW_Y - radius) return true;
+function assistPointHazardAt(point, futureT = point ? point.t : 0, radius = ASSIST_SAFE_RADIUS) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return { kind: 'lost', point, hitbox: null };
+  }
 
-  const hitboxes = obstacleHitboxes(point.x - 460, point.x + 460, time + futureT);
+  const t = Math.max(0, Number(futureT) || 0);
+  if (point.y > LOST_BELOW_Y - radius) {
+    return { kind: 'lost', point, hitbox: null, t };
+  }
+
+  // Moving hazards (saws, gates, water) are sampled at the same future
+  // timestamp as the predicted player point so warnings line up with where the
+  // obstacle will actually be on impact.
+  const hitboxes = obstacleHitboxes(point.x - 460, point.x + 460, time + t);
   const waveHitbox = typeof escapeWaveHitbox === 'function' ? escapeWaveHitbox() : null;
   if (waveHitbox) hitboxes.push(waveHitbox);
 
   const probe = { shape: 'circle', kind: 'assist-player', x: point.x, y: point.y, r: radius };
-  return hitboxes.some(hitbox => hitboxHitsPlayer(hitbox, probe));
+  const hitbox = hitboxes.find(candidate => hitboxHitsPlayer(candidate, probe));
+  return hitbox ? { kind: hitbox.kind || 'hazard', point, hitbox, t } : null;
+}
+
+function assistPointHitsHazardAt(point, futureT = point ? point.t : 0, radius = ASSIST_SAFE_RADIUS) {
+  return Boolean(assistPointHazardAt(point, futureT, radius));
+}
+
+function assistFirstHazardHit(points, radius = ASSIST_SAFE_RADIUS, maxLookahead = Infinity) {
+  if (!points || !points.length) return null;
+  const startT = Number(points[0].t) || 0;
+  for (let i = 1; i < points.length; i += 1) {
+    const point = points[i];
+    const relativeT = Math.max(0, (Number(point.t) || 0) - startT);
+    if (relativeT > maxLookahead) break;
+    const hazard = assistPointHazardAt(point, point.t, radius);
+    if (hazard) return { index: i, point, hazard, t: point.t };
+  }
+  return null;
 }
 
 function assistFirstHazardIndex(points) {
-  for (let i = 1; i < points.length; i += 1) {
-    const point = points[i];
-    if (assistPointHitsHazardAt(point, point.t)) return i;
-  }
-  return Infinity;
+  const hit = assistFirstHazardHit(points);
+  return hit ? hit.index : Infinity;
 }
 
 function assistAttachedSwingPoints(anchor, source, duration, control = inputAxisX(), reel = inputAxisY()) {
@@ -1283,6 +1373,22 @@ function evaluateHookAssistCue() {
     point: catchPoint,
     path: points.slice(0, catchIndex + 1),
     confidence: clamp(confidence, 0, 1),
+  };
+}
+
+function assistCurrentRopePrediction() {
+  if (!assistEnabled || !gameStarted || replayMode || gamePaused || gameOver) return null;
+  if (!player.attached || !player.anchor) return null;
+
+  const anchor = player.anchor;
+  const control = inputAxisX();
+  const reel = inputAxisY();
+  const points = assistAttachedSwingPoints(anchor, player, ASSIST_ROPE_MOTION_LOOKAHEAD, control, reel);
+
+  return {
+    anchor,
+    points,
+    hazard: assistFirstHazardHit(points, ASSIST_ROPE_WARNING_RADIUS, ASSIST_ROPE_WARNING_LOOKAHEAD),
   };
 }
 
@@ -1645,6 +1751,14 @@ function assistCanvasColor(alpha = 1, cue = null) {
   return assistHexToRgba(assistPaletteForCue(cue).color, alpha);
 }
 
+function assistNeutralCanvasColor(alpha = 1) {
+  return assistHexToRgba(colorTheme === 'dark' ? '#9aa4b2' : '#8b96a3', alpha);
+}
+
+function assistWarningCanvasColor(alpha = 1) {
+  return assistHexToRgba(colorTheme === 'dark' ? '#ff6b6b' : '#dc2626', alpha);
+}
+
 function drawAssistPath(points, alpha = 0.32, cue = null) {
   if (!points || points.length < 2) return;
   ctx.save();
@@ -1748,6 +1862,121 @@ function drawAssistArrow(fromX, fromY, toX, toY, confidence = 0.6, cue = null) {
   ctx.restore();
 }
 
+function drawAssistPredictionPolyline(points, color, lineWidth, dash, startIndex = 0, endIndex = points ? points.length - 1 : -1) {
+  if (!points || points.length < 2 || endIndex <= startIndex) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (dash && dash.length) ctx.setLineDash(dash);
+  ctx.beginPath();
+  ctx.moveTo(sx(points[startIndex].x), sy(points[startIndex].y));
+  for (let i = startIndex + 1; i <= endIndex && i < points.length; i += 1) {
+    ctx.lineTo(sx(points[i].x), sy(points[i].y));
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAssistRopeMotionPath(preview) {
+  const points = preview && preview.points;
+  if (!points || points.length < 2) return;
+
+  const hazardIndex = preview.hazard ? preview.hazard.index : points.length - 1;
+  drawAssistPredictionPolyline(
+    points,
+    assistNeutralCanvasColor(colorTheme === 'dark' ? 0.50 : 0.58),
+    4,
+    [10, 12],
+    0,
+    Math.max(1, hazardIndex),
+  );
+
+  if (preview.hazard) {
+    const start = Math.max(0, hazardIndex - 5);
+    drawAssistPredictionPolyline(
+      points,
+      assistWarningCanvasColor(0.86),
+      5.5,
+      [5, 7],
+      start,
+      hazardIndex,
+    );
+  }
+}
+
+function assistWarningTrianglePosition(hit) {
+  const point = hit && hit.point;
+  const hazard = hit && hit.hazard;
+  if (!point) return null;
+
+  let x = point.x;
+  let y = point.y - ASSIST_ROPE_WARNING_RADIUS - 34;
+  const hitbox = hazard && hazard.hitbox;
+  if (hitbox && hitbox.shape === 'circle') {
+    x = hitbox.x;
+    y = hitbox.y - hitbox.r - 34;
+  } else if (hitbox && hitbox.kind === 'terrain' && typeof terrainYAt === 'function') {
+    y = Math.min(y, terrainYAt(point.x) - 42);
+  }
+  return { x, y };
+}
+
+function drawAssistWarningTriangle(hit) {
+  const pos = assistWarningTrianglePosition(hit);
+  if (!pos) return;
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 11.5);
+  const size = 24 + pulse * 4;
+  ctx.save();
+  ctx.translate(sx(pos.x), sy(pos.y));
+  ctx.rotate(Math.sin(time * 8.2) * 0.035);
+
+  ctx.fillStyle = assistWarningCanvasColor(0.16 + pulse * 0.08);
+  ctx.strokeStyle = assistWarningCanvasColor(0.95);
+  ctx.lineWidth = 4;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.78);
+  ctx.lineTo(size * 0.86, size * 0.70);
+  ctx.lineTo(-size * 0.86, size * 0.70);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.strokeStyle = PAPER;
+  ctx.lineWidth = 5.4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.28);
+  ctx.lineTo(0, size * 0.18);
+  ctx.stroke();
+  ctx.fillStyle = PAPER;
+  ctx.beginPath();
+  ctx.arc(0, size * 0.43, 4.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = assistWarningCanvasColor(0.98);
+  ctx.lineWidth = 2.8;
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.28);
+  ctx.lineTo(0, size * 0.18);
+  ctx.stroke();
+  ctx.fillStyle = assistWarningCanvasColor(0.98);
+  ctx.beginPath();
+  ctx.arc(0, size * 0.43, 3.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawAssistRopePrediction() {
+  const preview = assistCurrentRopePrediction();
+  if (!preview) return;
+  drawAssistRopeMotionPath(preview);
+  if (preview.hazard) drawAssistWarningTriangle(preview.hazard);
+}
+
 function drawAssistReelCue() {
   if (!currentAssistReelCueKind()) return;
   const cue = assistReelCue;
@@ -1779,6 +2008,7 @@ function drawAssistReelCue() {
 }
 
 function drawAssistCue() {
+  drawAssistRopePrediction();
   drawAssistReelCue();
   if (!currentAssistCueKind()) return;
   const cue = assistCue;
