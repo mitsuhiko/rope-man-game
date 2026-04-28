@@ -24,6 +24,13 @@ screen.
 Pick a map seed, customize Rope Man with a hat, then swing, release, hook again,
 and see how many meters you can survive.
 
+## In-game help and credits
+
+From the main menu you can open:
+
+- **help**: quick instructions and gameplay tips
+- **credits**: game made by Martin, Adrian & Armin Ronacher, plus the GitHub link
+
 ## Controls
 
 ### Keyboard

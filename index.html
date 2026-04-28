@@ -156,7 +156,7 @@
       font-weight: 900;
       letter-spacing: -0.08em;
       line-height: 0.88;
-      text-transform: lowercase;
+      text-transform: none;
     }
 
     .start-copy {
@@ -484,6 +484,14 @@
       transform: rotate(-0.2deg);
     }
 
+    .start-links {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+      transform: rotate(-0.2deg);
+    }
+
     .start-toggle {
       min-height: 40px;
       padding: 0 12px;
@@ -499,7 +507,8 @@
     }
 
     .start-customization-menu,
-    .start-scores-menu {
+    .start-scores-menu,
+    .start-info-menu {
       display: flex;
       flex-direction: column;
       width: min(92vw, 760px);
@@ -511,14 +520,42 @@
       transform: rotate(-0.12deg);
     }
 
-    .start-scores-menu {
+    .start-scores-menu,
+    .start-info-menu {
       width: min(92vw, 680px);
       transform: rotate(0.14deg);
     }
 
     .start-customization-menu[hidden],
-    .start-scores-menu[hidden] {
+    .start-scores-menu[hidden],
+    .start-info-menu[hidden] {
       display: none;
+    }
+
+    .start-info-copy {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: clamp(13px, 1.2vw, 16px);
+      font-weight: 900;
+      line-height: 1.35;
+    }
+
+    .start-info-copy p {
+      margin: 10px 0;
+    }
+
+    .start-info-copy ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+
+    .start-info-copy li {
+      margin: 6px 0;
+    }
+
+    .start-info-copy a {
+      color: inherit;
+      font-weight: 900;
     }
 
     .customization-head {
@@ -536,6 +573,10 @@
       line-height: 0.95;
       letter-spacing: -0.07em;
       text-transform: lowercase;
+    }
+
+    .start-info-menu .customization-title {
+      text-transform: none;
     }
 
     .customization-copy {
@@ -1350,7 +1391,8 @@
         padding: 18px;
       }
       .start-customization-menu,
-      .start-scores-menu {
+      .start-scores-menu,
+      .start-info-menu {
         max-height: none;
         overflow: visible;
       }
@@ -1471,7 +1513,7 @@
     <canvas id="game" aria-label="Rope Man canvas game"></canvas>
     <section id="start-screen" class="start-screen" aria-labelledby="start-title">
       <div id="start-main-panel" class="start-panel">
-        <h1 id="start-title" class="start-title">rope man</h1>
+        <h1 id="start-title" class="start-title">Rope Man</h1>
         <p class="start-copy">Pick a seed, then fling the stickman as far as you can. Share the seed when you find a weird run.</p>
         <div class="start-menu">
           <button id="start-random" class="start-button start-button--primary" type="button">start</button>
@@ -1501,11 +1543,15 @@
           <button id="start-assist-toggle" class="start-button start-toggle" type="button" aria-pressed="false">assist off</button>
           <button id="start-scores-open" class="start-button start-toggle" type="button" aria-controls="start-scores-menu" aria-expanded="false">high scores</button>
         </div>
+        <div class="start-links" aria-label="Info links">
+          <button id="start-credits-open" class="start-button start-toggle" type="button" aria-controls="start-credits-menu" aria-expanded="false">credits</button>
+          <button id="start-help-open" class="start-button start-toggle" type="button" aria-controls="start-help-menu" aria-expanded="false">help</button>
+        </div>
       </div>
       <section id="start-customization-menu" class="start-panel start-customization-menu" aria-labelledby="customization-title" hidden>
         <div class="customization-head">
           <div>
-            <h2 id="customization-title" class="customization-title">customize rope man</h2>
+            <h2 id="customization-title" class="customization-title">customize Rope Man</h2>
             <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10¢ in free roam, 20¢ in escape the wave, and saw coins are 50¢. Hats cost 100¢.</p>
             <div class="customization-wallet">balance <span id="start-wallet-balance">0</span>¢</div>
           </div>
@@ -1556,6 +1602,40 @@
           <button id="start-scores-by-attempts" class="start-button high-score-tab" type="button" aria-pressed="false">most attempts</button>
         </div>
         <div id="start-scores-list" class="high-score-list" aria-live="polite"></div>
+      </section>
+      <section id="start-credits-menu" class="start-panel start-info-menu" aria-labelledby="credits-title" hidden>
+        <div class="customization-head">
+          <div>
+            <h2 id="credits-title" class="customization-title">Credits</h2>
+            <p class="customization-copy">Who made Rope Man.</p>
+          </div>
+          <button id="start-credits-close" class="start-button start-button--ghost" type="button">back</button>
+        </div>
+        <div class="start-info-copy">
+          <p>Game made by Martin, Adrian &amp; Armin Ronacher.</p>
+          <p><a href="https://github.com/mitsuhiko/rope-man-game" target="_blank" rel="noopener noreferrer">View the project on GitHub</a></p>
+        </div>
+      </section>
+      <section id="start-help-menu" class="start-panel start-info-menu" aria-labelledby="help-title" hidden>
+        <div class="customization-head">
+          <div>
+            <h2 id="help-title" class="customization-title">Help</h2>
+            <p class="customization-copy">How to play Rope Man.</p>
+          </div>
+          <button id="start-help-close" class="start-button start-button--ghost" type="button">back</button>
+        </div>
+        <div class="start-info-copy">
+          <p><strong>Goal:</strong> Swing as far as possible without crashing into hazards.</p>
+          <ul>
+            <li>Press <strong>Space</strong> (or tap the big action button) to hook or release.</li>
+            <li>Use <strong>A/D</strong> or <strong>←/→</strong> (or joystick left/right) to swing.</li>
+            <li>Use <strong>W/S</strong> or <strong>↑/↓</strong> (or joystick up/down) to reel the rope in and out.</li>
+            <li>Avoid spikes, saws, gates, and liquid pools.</li>
+            <li>Collect coins to buy hats in the customize menu.</li>
+            <li>Enable <strong>assist</strong> and try <strong>practice mode</strong> to learn safely.</li>
+          </ul>
+          <p>Tip: release at the bottom of a swing for speed, then hook again quickly.</p>
+        </div>
       </section>
     </section>
     <section class="hud" aria-label="Score">

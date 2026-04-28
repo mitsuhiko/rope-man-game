@@ -61,6 +61,8 @@ function startGameWithSeed(seedValue) {
   setPurchasePopoverVisible(false, { restoreFocus: false });
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setHighScoreMenuVisible(false, { restoreFocus: false });
+  setCreditsMenuVisible(false, { restoreFocus: false });
+  setHelpMenuVisible(false, { restoreFocus: false });
   gameStarted = true;
   setStartScreenVisible(false);
   reset();
@@ -522,6 +524,8 @@ function setHighScoreMenuVisible(visible, options = {}) {
       startCustomizationMenuEl.setAttribute('aria-hidden', 'true');
     }
     if (startCustomizeOpenEl) startCustomizeOpenEl.setAttribute('aria-expanded', 'false');
+    setCreditsMenuVisible(false, { restoreFocus: false, showMain: false });
+    setHelpMenuVisible(false, { restoreFocus: false, showMain: false });
     setHighScoreSortMode(highScoreSortMode);
   }
 
@@ -545,6 +549,49 @@ function setupHighScoreControls() {
   bindStartButton(startScoresByAttemptsEl, () => setHighScoreSortMode('attempts'));
 }
 
+function setInfoMenuVisible(kind, visible, options = {}) {
+  const { restoreFocus = true, showMain = true } = options;
+  const credits = kind === 'credits';
+  const menuEl = credits ? startCreditsMenuEl : startHelpMenuEl;
+  const openEl = credits ? startCreditsOpenEl : startHelpOpenEl;
+  const closeEl = credits ? startCreditsCloseEl : startHelpCloseEl;
+  if (!menuEl) return;
+
+  if (visible) {
+    setCustomizationMenuVisible(false, { restoreFocus: false });
+    setHighScoreMenuVisible(false, { restoreFocus: false, showMain: false });
+    if (credits) setHelpMenuVisible(false, { restoreFocus: false, showMain: false });
+    else setCreditsMenuVisible(false, { restoreFocus: false, showMain: false });
+  }
+
+  if (startMainPanelEl && (visible || showMain)) startMainPanelEl.hidden = visible;
+  menuEl.hidden = !visible;
+  menuEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  if (startScreenEl) startScreenEl.scrollTop = 0;
+  if (openEl) openEl.setAttribute('aria-expanded', visible ? 'true' : 'false');
+
+  if (visible) {
+    focusWithoutScroll(closeEl);
+  } else if (restoreFocus) {
+    focusWithoutScroll(openEl);
+  }
+}
+
+function setCreditsMenuVisible(visible, options = {}) {
+  setInfoMenuVisible('credits', visible, options);
+}
+
+function setHelpMenuVisible(visible, options = {}) {
+  setInfoMenuVisible('help', visible, options);
+}
+
+function setupInfoControls() {
+  bindStartButton(startCreditsOpenEl, () => setCreditsMenuVisible(true));
+  bindStartButton(startCreditsCloseEl, () => setCreditsMenuVisible(false));
+  bindStartButton(startHelpOpenEl, () => setHelpMenuVisible(true));
+  bindStartButton(startHelpCloseEl, () => setHelpMenuVisible(false));
+}
+
 function focusWithoutScroll(element) {
   if (!element) return;
   try {
@@ -557,7 +604,11 @@ function focusWithoutScroll(element) {
 function setCustomizationMenuVisible(visible, options = {}) {
   const { restoreFocus = true } = options;
   if (!startCustomizationMenuEl) return;
-  if (visible) setHighScoreMenuVisible(false, { restoreFocus: false, showMain: false });
+  if (visible) {
+    setHighScoreMenuVisible(false, { restoreFocus: false, showMain: false });
+    setCreditsMenuVisible(false, { restoreFocus: false, showMain: false });
+    setHelpMenuVisible(false, { restoreFocus: false, showMain: false });
+  }
   if (visible && startHatGridEl && !startHatGridEl.children.length) renderHatChoices();
   if (startMainPanelEl) startMainPanelEl.hidden = visible;
   startCustomizationMenuEl.hidden = !visible;
@@ -611,6 +662,7 @@ function setupStartControls() {
   setupGameModeSelects();
   setupCustomizationControls();
   setupHighScoreControls();
+  setupInfoControls();
 
   if (startSeedFormEl) {
     startSeedFormEl.addEventListener('submit', (e) => {
@@ -635,6 +687,8 @@ function returnToMainMenu() {
   setPurchasePopoverVisible(false, { restoreFocus: false });
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setHighScoreMenuVisible(false, { restoreFocus: false });
+  setCreditsMenuVisible(false, { restoreFocus: false });
+  setHelpMenuVisible(false, { restoreFocus: false });
   setStartScreenVisible(true);
   setStartSeedError('');
   resetJoystickInput();
