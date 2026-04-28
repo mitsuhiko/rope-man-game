@@ -50,12 +50,15 @@ function toggleAssistSetting() {
 let highScoreSortMode = 'score';
 let highScoreGameMode = gameModeTracksStats(gameMode) ? gameMode : DEFAULT_GAME_MODE;
 let colorEditTarget = 'body';
+let pendingPurchaseHatId = null;
+let purchasePopoverReturnFocus = null;
 
 function startGameWithSeed(seedValue) {
   primeGameAudio();
   setStartSeedError('');
   setGameSeed(seedValue);
   if (startSeedInputEl) startSeedInputEl.value = gameSeedText;
+  setPurchasePopoverVisible(false, { restoreFocus: false });
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setHighScoreMenuVisible(false, { restoreFocus: false });
   gameStarted = true;
@@ -162,8 +165,15 @@ function syncCustomizationUi() {
     for (const button of startHatGridEl.querySelectorAll('.hat-choice')) {
       const hatId = button.dataset.hat || null;
       const isSelected = hatId === selectedHat;
+      const isOwned = !hatId || hatIsOwned(hatId);
+      const isAffordable = Boolean(hatId && !isOwned && canAffordHat(hatId));
+      const costEl = button.querySelector('.hat-choice-cost');
       button.classList.toggle('is-selected', isSelected);
+      button.classList.toggle('is-locked', Boolean(hatId && !isOwned));
+      button.classList.toggle('is-affordable', isAffordable);
       button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      button.setAttribute('aria-disabled', hatId && !isOwned && !isAffordable ? 'true' : 'false');
+      if (costEl) costEl.textContent = !hatId ? 'free' : (isOwned ? 'owned' : `${HAT_COST}₶`);
     }
   }
   if (startColorGridEl) {
@@ -176,8 +186,65 @@ function syncCustomizationUi() {
   }
 }
 
-function selectHat(hatId) {
-  setCharacterAppearance({ hat: hatId || null });
+function setPurchasePopoverVisible(visible, options = {}) {
+  const { restoreFocus = true } = options;
+  if (!startPurchasePopoverEl) return;
+  startPurchasePopoverEl.hidden = !visible;
+  startPurchasePopoverEl.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  if (visible) {
+    focusWithoutScroll(startPurchaseConfirmEl);
+  } else {
+    pendingPurchaseHatId = null;
+    if (restoreFocus) focusWithoutScroll(purchasePopoverReturnFocus);
+    purchasePopoverReturnFocus = null;
+  }
+}
+
+function showHatPurchasePopover(hatId, returnFocus = null) {
+  if (!hatExists(hatId) || hatIsOwned(hatId) || !canAffordHat(hatId)) return false;
+  pendingPurchaseHatId = hatId;
+  purchasePopoverReturnFocus = returnFocus;
+
+  if (startPurchasePreviewEl) {
+    startPurchasePreviewEl.replaceChildren();
+    if (typeof createPaperTintedAccessoryElement === 'function') {
+      startPurchasePreviewEl.appendChild(createPaperTintedAccessoryElement(hatId));
+    }
+  }
+  if (startPurchaseTitleEl) startPurchaseTitleEl.textContent = `buy ${hatLabel(hatId)}?`;
+  if (startPurchaseCopyEl) {
+    startPurchaseCopyEl.textContent = `Spend ${HAT_COST}₶? You will have ${Math.max(0, coinBalance - HAT_COST)}₶ left.`;
+  }
+  if (startPurchaseConfirmEl) startPurchaseConfirmEl.textContent = `buy ${HAT_COST}₶`;
+  setPurchasePopoverVisible(true, { restoreFocus: false });
+  return true;
+}
+
+function confirmHatPurchase() {
+  const hatId = pendingPurchaseHatId;
+  if (!hatId) {
+    setPurchasePopoverVisible(false);
+    return;
+  }
+  if (tryPurchaseHat(hatId)) {
+    setCharacterAppearance({ hat: hatId });
+  }
+  setPurchasePopoverVisible(false);
+  syncCustomizationUi();
+}
+
+function selectHat(hatId, sourceButton = null) {
+  if (!hatId) {
+    setCharacterAppearance({ hat: null });
+    syncCustomizationUi();
+    return;
+  }
+  if (!hatIsOwned(hatId)) {
+    showHatPurchasePopover(hatId, sourceButton);
+    syncCustomizationUi();
+    return;
+  }
+  setCharacterAppearance({ hat: hatId });
   syncCustomizationUi();
 }
 
@@ -255,9 +322,13 @@ function makeHatChoice(hatId) {
   label.className = 'hat-choice-name';
   label.textContent = hatLabel(hatId);
 
-  button.append(preview, label);
-  button.setAttribute('aria-label', hatLabel(hatId));
-  bindHatChoiceButton(button, () => selectHat(hatId));
+  const cost = document.createElement('span');
+  cost.className = 'hat-choice-cost';
+  cost.textContent = !hatId ? 'free' : (hatIsOwned(hatId) ? 'owned' : `${HAT_COST}₶`);
+
+  button.append(preview, label, cost);
+  button.setAttribute('aria-label', hatId ? `${hatLabel(hatId)}, ${hatIsOwned(hatId) ? 'owned' : `${HAT_COST} currency`}` : hatLabel(hatId));
+  bindHatChoiceButton(button, () => selectHat(hatId, button));
   return button;
 }
 
@@ -296,6 +367,12 @@ function renderHatChoices() {
   const hats = typeof CHARACTER_HAT_ORDER !== 'undefined' ? CHARACTER_HAT_ORDER : Object.keys(CHARACTER_HATS);
   startHatGridEl.replaceChildren(makeHatChoice(null), ...hats.map(makeHatChoice));
   syncCustomizationUi();
+}
+
+function ensureSelectedHatIsOwned() {
+  if (characterAppearance.hat && (!hatExists(characterAppearance.hat) || !hatIsOwned(characterAppearance.hat))) {
+    setCharacterAppearance({ hat: null });
+  }
 }
 
 function makeGameModeSelect(id, selectedMode = gameMode, options = {}) {
@@ -479,11 +556,23 @@ function setCustomizationMenuVisible(visible, options = {}) {
 }
 
 function setupCustomizationControls() {
+  ensureSelectedHatIsOwned();
   renderColorChoices();
   renderHatChoices();
   syncCustomizationUi();
   bindStartButton(startCustomizeOpenEl, () => setCustomizationMenuVisible(!startCustomizationMenuEl || startCustomizationMenuEl.hidden));
   bindStartButton(startCustomizeCloseEl, () => setCustomizationMenuVisible(false));
+  bindStartButton(startPurchaseCancelEl, () => setPurchasePopoverVisible(false));
+  bindStartButton(startPurchaseConfirmEl, confirmHatPurchase);
+  if (startPurchasePopoverEl) {
+    startPurchasePopoverEl.addEventListener('pointerdown', (e) => {
+      if (e.target === startPurchasePopoverEl) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPurchasePopoverVisible(false);
+      }
+    }, { passive: false });
+  }
 }
 
 function setupStartControls() {
@@ -524,6 +613,7 @@ function returnToMainMenu() {
   replayInputOverride = null;
   activeReplayRecording = null;
   setCrashActionsVisible(false);
+  setPurchasePopoverVisible(false, { restoreFocus: false });
   setCustomizationMenuVisible(false, { restoreFocus: false });
   setHighScoreMenuVisible(false, { restoreFocus: false });
   setStartScreenVisible(true);

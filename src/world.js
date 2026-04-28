@@ -22,6 +22,66 @@ function addAnchor(x, y) {
   anchors.push({ id: anchors.length + 1, x, y, r: 8 });
 }
 
+function coinSpawnMinimumX() {
+  return 150 + COIN_MIN_START_DISTANCE;
+}
+
+function baseCoinValueForMode(mode = gameMode) {
+  return normalizeGameMode(mode) === 'escapeWave' ? 20 : COIN_VALUE;
+}
+
+function coinValueForObstacle(obstacle) {
+  return obstacle && obstacle.type === 'saw' ? 50 : baseCoinValueForMode();
+}
+
+function coinVisualSpec(value) {
+  if (value >= 50) return { fill: '#1fb6b2', stroke: '#075b5b', shine: 'rgba(190, 255, 252, 0.78)' };
+  if (value >= 20) return { fill: '#37c871', stroke: '#116b36', shine: 'rgba(210, 255, 225, 0.78)' };
+  return { fill: '#f7c948', stroke: '#8a5a00', shine: 'rgba(255, 255, 255, 0.7)' };
+}
+
+function addCoin(x, y, obstacleType, clusterIndex, value = COIN_VALUE) {
+  const id = `${gameSeedText}:${clusterIndex}:${Math.round(x)}:${Math.round(y)}`;
+  if (collectedCoinIds.has(id) || coins.some(coin => coin && coin.id === id)) return;
+  coins.push({
+    id,
+    x,
+    y,
+    r: COIN_RADIUS,
+    value,
+    obstacleType,
+    collected: false,
+  });
+}
+
+function spawnCoinNearObstacle(obstacle, clusterIndex) {
+  if (!obstacle || obstacle.x < coinSpawnMinimumX()) return;
+  if (coinRandom() > COIN_SPAWN_CHANCE) return;
+
+  let x = obstacle.x;
+  let y = obstacle.y || H * 0.48;
+  if (obstacle.type === 'gate') {
+    x = obstacle.x + obstacle.w / 2;
+    y = obstacle.gapY + coinRand(-obstacle.gap * 0.19, obstacle.gap * 0.19);
+  } else if (obstacle.type === 'saw') {
+    const side = coinRandom() < 0.5 ? -1 : 1;
+    x = obstacle.x + side * coinRand(obstacle.r + 54, obstacle.r + 76);
+    y = obstacle.y + coinRand(-35, 35);
+  } else if (obstacle.type === 'spikes') {
+    x = obstacle.x + obstacle.count * obstacle.size * coinRand(0.36, 0.64);
+    if (obstacle.ground) {
+      y = terrainYAt(x) - (obstacle.height || obstacle.size * 1.6) - coinRand(58, 104);
+    } else {
+      y = obstacle.y + (obstacle.height || obstacle.size) + coinRand(58, 100);
+    }
+  }
+
+  if (x < coinSpawnMinimumX()) return;
+  const terrainLimit = terrainYAt(x) - COIN_RADIUS * 3.2;
+  y = clamp(y, ANCHOR_MIN_Y + 40, terrainLimit);
+  addCoin(x, y, obstacle.type, clusterIndex, coinValueForObstacle(obstacle));
+}
+
 function generateUntil(worldX) {
   const targetX = Math.max(0, Number(worldX) || 0);
   // Advance in fixed world-space slices, not caller-provided distances.  That
@@ -90,14 +150,12 @@ function spawnObstacleCluster(x, i) {
   const difficulty = clamp(x / 5500, 0, 1);
   const roll = random();
   const groundY = terrainYAt(x);
+  let obstacle = null;
 
   if (i < 1) {
-    obstacles.push({ type: 'gate', x, w: 26, gapY: H * 0.54, gap: 360, phase: rand(0, Math.PI * 2), speed: 0.65 });
-    return;
-  }
-
-  if (roll < 0.23) {
-    obstacles.push({
+    obstacle = { type: 'gate', x, w: 26, gapY: H * 0.54, gap: 360, phase: rand(0, Math.PI * 2), speed: 0.65 };
+  } else if (roll < 0.23) {
+    obstacle = {
       type: 'gate',
       x,
       w: 28,
@@ -105,9 +163,9 @@ function spawnObstacleCluster(x, i) {
       gap: rand(300 - difficulty * 45, 390 - difficulty * 40),
       phase: rand(0, Math.PI * 2),
       speed: rand(0.55, 1.15 + difficulty * 0.25),
-    });
+    };
   } else if (roll < 0.56) {
-    obstacles.push({
+    obstacle = {
       type: 'saw',
       x,
       y: rand(H * 0.30, clamp(groundY - 105, H * 0.42, H * 0.68)),
@@ -115,13 +173,13 @@ function spawnObstacleCluster(x, i) {
       spin: rand(-1, 1) < 0 ? -1 : 1,
       bob: rand(95, 180),
       phase: rand(0, Math.PI * 2),
-    });
+    };
   } else {
     const ceiling = random() < 0.30;
     const size = rand(22, 31);
     const count = Math.floor(rand(4, 9));
     const spikeX = x + (ceiling ? 0 : rand(-50, 95));
-    obstacles.push({
+    obstacle = {
       type: 'spikes',
       x: spikeX,
       y: ceiling ? 34 : 0,
@@ -130,7 +188,12 @@ function spawnObstacleCluster(x, i) {
       size,
       ground: !ceiling,
       height: ceiling ? size : size * rand(1.45, 1.95),
-    });
+    };
+  }
+
+  if (obstacle) {
+    obstacles.push(obstacle);
+    spawnCoinNearObstacle(obstacle, i);
   }
 }
 
@@ -436,6 +499,62 @@ function hitboxHitsPlayer(hitbox, playerBox) {
 function hitsObstacle() {
   const playerBoxes = playerHitboxes();
   return obstacleHitboxes().some(hitbox => playerBoxes.some(p => hitboxHitsPlayer(hitbox, p)));
+}
+
+function collectRunCoins() {
+  if (replayMode) return;
+  const playerBoxes = playerHitboxes();
+  for (const coin of coins) {
+    if (!coin || coin.collected) continue;
+    const hit = playerBoxes.some(box => hypot(box.x - coin.x, box.y - coin.y) <= box.r + coin.r);
+    if (!hit) continue;
+    coin.collected = true;
+    coin.collectedAt = time;
+    collectedCoinIds.add(coin.id);
+    playCoinSound();
+    if (gameModeTracksStats()) {
+      currentRunCoinsEarned += coin.value || COIN_VALUE;
+      addCoinBalance(coin.value || COIN_VALUE);
+    }
+  }
+}
+
+function pruneCoins() {
+  const cutoff = cameraX - 1800;
+  coins = coins.filter(coin => coin && (!coin.collected || time - (coin.collectedAt || time) < 0.45) && coin.x > cutoff);
+}
+
+function drawCoins() {
+  if (replayMode) return;
+  const left = cameraX - 80;
+  const right = cameraX + cameraViewW() + 80;
+  for (const coin of coins) {
+    if (!coin || coin.collected || coin.x < left || coin.x > right) continue;
+    const pulse = 1 + Math.sin(time * 5.2 + coin.x * 0.02) * 0.08;
+    const y = coin.y + Math.sin(time * 2.8 + coin.x * 0.01) * 4;
+    ctx.save();
+    ctx.translate(sx(coin.x), sy(y));
+    const visual = coinVisualSpec(coin.value || COIN_VALUE);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = visual.fill;
+    ctx.strokeStyle = visual.stroke;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, coin.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = visual.shine;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(-3, -4, coin.r * 0.45, Math.PI * 1.05, Math.PI * 1.65);
+    ctx.stroke();
+    ctx.fillStyle = visual.stroke;
+    ctx.font = '900 10px "Comic Sans MS", "Comic Sans", cursive';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(coin.value || COIN_VALUE), 0, 1);
+    ctx.restore();
+  }
 }
 
 function circleRect(cx, cy, cr, rx, ry, rw, rh) {

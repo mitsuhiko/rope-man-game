@@ -375,6 +375,98 @@
       line-height: 1.25;
     }
 
+    .start-wallet {
+      display: inline-block;
+      margin-top: 6px;
+      color: var(--rope);
+      font-size: clamp(12px, 1.15vw, 15px);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .customization-wallet {
+      margin-top: 6px;
+      color: var(--rope);
+      font-size: clamp(14px, 1.35vw, 18px);
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .purchase-popover {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: calc(env(safe-area-inset-top, 0px) + 18px) calc(env(safe-area-inset-right, 0px) + 18px) calc(env(safe-area-inset-bottom, 0px) + 18px) calc(env(safe-area-inset-left, 0px) + 18px);
+      background: rgba(17, 17, 17, 0.18);
+      z-index: 8;
+    }
+
+    :root[data-theme="dark"] .purchase-popover,
+    body[data-theme="dark"] .purchase-popover {
+      background: rgba(0, 0, 0, 0.42);
+    }
+
+    .purchase-popover[hidden] {
+      display: none;
+    }
+
+    .purchase-card {
+      box-sizing: border-box;
+      width: min(88vw, 430px);
+      padding: clamp(20px, 3.2vw, 30px);
+      border: 4px solid var(--ink);
+      border-radius: 24px;
+      background: var(--panel);
+      text-align: center;
+      transform: rotate(0.45deg);
+      box-shadow: 10px 12px 0 var(--focus-ring);
+    }
+
+    .purchase-preview {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 86px;
+      height: 74px;
+      margin: 0 auto 12px;
+    }
+
+    .purchase-preview img,
+    .purchase-preview canvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .purchase-title {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 34px);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.07em;
+      text-transform: lowercase;
+    }
+
+    .purchase-copy {
+      margin: 10px auto 0;
+      color: var(--muted);
+      font-size: clamp(13px, 1.3vw, 16px);
+      font-weight: 900;
+      line-height: 1.3;
+    }
+
+    .purchase-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
     .start-button--ghost {
       min-height: 38px;
       padding: 0 14px;
@@ -547,6 +639,18 @@
       transform: rotate(-0.45deg);
     }
 
+    .hat-choice.is-locked {
+      border-style: dashed;
+    }
+
+    .hat-choice.is-locked:not(.is-affordable) {
+      opacity: 0.58;
+    }
+
+    .hat-choice.is-affordable {
+      box-shadow: 0 0 0 3px var(--focus-ring);
+    }
+
     .hat-choice-preview {
       display: flex;
       align-items: center;
@@ -578,6 +682,18 @@
       display: block;
       font-size: 11px;
       line-height: 1.05;
+    }
+
+    .hat-choice-cost {
+      display: block;
+      margin-top: 4px;
+      color: var(--rope);
+      font-size: 10px;
+      line-height: 1;
+    }
+
+    .hat-choice.is-selected .hat-choice-cost {
+      color: var(--paper);
     }
 
     .color-choice-swatch {
@@ -740,6 +856,10 @@
       line-height: 1;
       font-weight: 900;
       letter-spacing: 0.02em;
+    }
+
+    .score-value #coin-balance {
+      color: var(--rope);
     }
 
     .score-meta {
@@ -1276,7 +1396,8 @@
         <div class="customization-head">
           <div>
             <h2 id="customization-title" class="customization-title">customize rope man</h2>
-            <p class="customization-copy">Pick what to color, then choose a color. Brown is the default rope color.</p>
+            <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10₶ in free roam, 20₶ in escape the wave, and saw coins are 50₶. Hats cost 100₶.</p>
+            <div class="customization-wallet">balance <span id="start-wallet-balance">0</span>₶</div>
           </div>
           <button id="start-customize-close" class="start-button start-button--ghost" type="button">back</button>
         </div>
@@ -1295,6 +1416,17 @@
         <div class="customization-section">
           <h3 class="customization-subtitle">hat</h3>
           <div id="start-hat-grid" class="hat-grid" role="radiogroup" aria-label="Hat choices"></div>
+        </div>
+      </section>
+      <section id="start-purchase-popover" class="purchase-popover" role="dialog" aria-modal="true" aria-labelledby="start-purchase-title" hidden>
+        <div class="purchase-card">
+          <div id="start-purchase-preview" class="purchase-preview" aria-hidden="true"></div>
+          <h2 id="start-purchase-title" class="purchase-title">buy hat?</h2>
+          <p id="start-purchase-copy" class="purchase-copy">Spend 100₶ on this hat?</p>
+          <div class="purchase-actions">
+            <button id="start-purchase-cancel" class="start-button start-button--ghost" type="button">cancel</button>
+            <button id="start-purchase-confirm" class="start-button start-button--primary start-button--ghost" type="button">buy</button>
+          </div>
         </div>
       </section>
       <section id="start-scores-menu" class="start-panel start-scores-menu" aria-labelledby="scores-title" hidden>
@@ -1318,7 +1450,7 @@
     </section>
     <section class="hud" aria-label="Score">
       <div class="score-label">score</div>
-      <div class="score-value"><span id="score">0</span>m</div>
+      <div class="score-value"><span id="score">0</span>m · <span id="coin-balance">0</span>₶</div>
       <div class="score-seed">seed <span id="seed">------</span></div>
       <div class="score-meta">overall <span id="best">0</span>m</div>
       <div class="score-meta">seed best <span id="seed-best">0</span>m</div>

@@ -19,7 +19,7 @@ const ASSIST_REEL_INPUT_DEAD_ZONE = 0.35;
 const ASSIST_ROPE_MOTION_LOOKAHEAD = 1.65;
 const ASSIST_ROPE_WARNING_LOOKAHEAD = ASSIST_ROPE_MOTION_LOOKAHEAD;
 const ASSIST_ROPE_WARNING_RADIUS = 31;
-const PRACTICE_BACK_ANCHOR_COUNT = 2;
+const PRACTICE_BACK_ANCHOR_COUNT = 0;
 const PRACTICE_BACK_ANCHOR_START_GAP = 260;
 const PRACTICE_BACK_ANCHOR_SPACING = 320;
 const PRACTICE_BACK_ANCHOR_NEAR_X = 110;
@@ -54,6 +54,12 @@ function reset(options = {}) {
   runFinalScore = 0;
   anchors = [];
   obstacles = [];
+  coins = [];
+  collectedCoinIds = new Set();
+  currentRunCoinsEarned = 0;
+  currentRunRecordBonus = 0;
+  currentRunDistanceBonus = 0;
+  currentRunDistanceBonusMilestone = 0;
   bgShapes = [];
   resetTerrain();
   nextAnchorX = 120;
@@ -96,6 +102,9 @@ function reset(options = {}) {
   furthestX = player.x;
   hookArm.x = player.x;
   hookArm.y = player.y;
+  nextSwingSoundAt = 0;
+  lastSwingAngle = null;
+  lastSwingAnchorId = null;
   cameraX = player.x - cameraViewW() * 0.42;
   cameraY = player.y - cameraViewH() * 0.52;
   resetEscapeWave();
@@ -322,6 +331,7 @@ function capturePracticeState() {
     escapeWaveSpeed,
     rngState,
     backgroundRngState,
+    coinRngState,
     nextAnchorX,
     nextObstacleX,
     generatedWorldX,
@@ -447,6 +457,7 @@ function restorePracticeCheckpoint(snapshot) {
   escapeWaveSpeed = Number.isFinite(Number(snapshot.escapeWaveSpeed)) ? Number(snapshot.escapeWaveSpeed) : escapeWaveSpeed;
   rngState = Number.isFinite(Number(snapshot.rngState)) ? normalizeSeedValue(Number(snapshot.rngState)) : rngState;
   backgroundRngState = Number.isFinite(Number(snapshot.backgroundRngState)) ? normalizeSeedValue(Number(snapshot.backgroundRngState)) : backgroundRngState;
+  coinRngState = Number.isFinite(Number(snapshot.coinRngState)) ? normalizeSeedValue(Number(snapshot.coinRngState)) : coinRngState;
   nextAnchorX = Number.isFinite(Number(snapshot.nextAnchorX)) ? Number(snapshot.nextAnchorX) : nextAnchorX;
   nextObstacleX = Number.isFinite(Number(snapshot.nextObstacleX)) ? Number(snapshot.nextObstacleX) : nextObstacleX;
   generatedWorldX = Number.isFinite(Number(snapshot.generatedWorldX)) ? Number(snapshot.generatedWorldX) : generatedWorldX;
@@ -1593,6 +1604,8 @@ function update(dt) {
     updateRagdoll(dt);
     updateHookArmAim(dt);
     updateEscapeWave(dt);
+    playSwingSound();
+    collectRunCoins();
 
     if (isUnrecoverablyLost() || hitsObstacle() || hitsEscapeWave()) {
       die();
@@ -1602,6 +1615,7 @@ function update(dt) {
 
   anchors = anchors.filter(a => a === lockedAnchor || a === player.anchor || (ropeShot && a === ropeShot.anchor) || a.x > cameraX - 1800);
   obstacles = obstacles.filter(o => (o.x + (o.w || o.r || 0)) > cameraX - 1800);
+  pruneCoins();
   pruneTerrain();
   for (const s of bgShapes) {
     const sx = s.x - cameraX * s.layer;
@@ -1714,12 +1728,28 @@ function attachToAnchor(anchor) {
   markPracticeHook();
 }
 
+function awardRunRecordBonus() {
+  if (replayMode || currentRunRecordBonus > 0 || !gameModeTracksStats()) return 0;
+  if (runFinalScore < RECORD_BONUS_MIN_METERS) return 0;
+
+  const bonus = runHadOverallRecord
+    ? RECORD_OVERALL_BONUS
+    : (runHadSeedRecord ? RECORD_SEED_BONUS : 0);
+  if (!bonus) return 0;
+
+  currentRunRecordBonus = bonus;
+  currentRunCoinsEarned += bonus;
+  addCoinBalance(bonus);
+  return bonus;
+}
+
 function die() {
   if (gameOver) return;
   if (resetPracticeAfterDeath()) return;
   gamePaused = false;
   runFinalScore = refreshScoreAndRecords();
   if (!replayMode) finalizeReplayRecording();
+  awardRunRecordBonus();
   gameOver = true;
   beginCrashPlayerFade(replayMode);
   if (!replayMode) {
@@ -2073,6 +2103,7 @@ function draw() {
   drawTerrain();
   drawEscapeWave();
   drawObstacles();
+  drawCoins();
   drawAnchors();
   drawAssistCue();
   if (replayMode && activeReplayPlayback) {
@@ -2248,6 +2279,7 @@ function frame(ts) {
       captureReplayFrameState(replayFrame);
     }
   }
+  updateSawSound(dt);
   draw();
   requestAnimationFrame(frame);
 }
@@ -2323,6 +2355,7 @@ function setupPerfLogging() {
     'drawTerrainPool',
     'drawEscapeWave',
     'drawObstacles',
+    'drawCoins',
     'drawGate',
     'drawSaw',
     'drawSpikes',
@@ -2387,7 +2420,7 @@ function setupPerfLogging() {
       frameWorkP95Ms: Number(percentile(perf.frameTimes, 0.95).toFixed(4)),
       memory,
       player: { x: Math.round(player.x), y: Math.round(player.y), vx: Math.round(player.vx), vy: Math.round(player.vy) },
-      counts: { anchors: anchors.length, obstacles: obstacles.length, terrainKnots: terrainKnots.length, terrainPools: terrainPools.length },
+      counts: { anchors: anchors.length, obstacles: obstacles.length, coins: coins.length, collectedCoins: collectedCoinIds.size, terrainKnots: terrainKnots.length, terrainPools: terrainPools.length },
     });
     console.table(rows);
     console.groupEnd();

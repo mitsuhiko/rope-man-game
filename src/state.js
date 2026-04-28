@@ -3,6 +3,7 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
+const coinBalanceEl = document.getElementById('coin-balance');
 const bestEl = document.getElementById('best');
 const seedBestEl = document.getElementById('seed-best');
 const attemptsEl = document.getElementById('attempts');
@@ -35,6 +36,13 @@ const startColorTargetBodyEl = document.getElementById('start-color-target-body'
 const startColorTargetHatEl = document.getElementById('start-color-target-hat');
 const startColorTargetRopeEl = document.getElementById('start-color-target-rope');
 const startCharacterSelectionEl = document.getElementById('start-character-selection');
+const startWalletBalanceEl = document.getElementById('start-wallet-balance');
+const startPurchasePopoverEl = document.getElementById('start-purchase-popover');
+const startPurchasePreviewEl = document.getElementById('start-purchase-preview');
+const startPurchaseTitleEl = document.getElementById('start-purchase-title');
+const startPurchaseCopyEl = document.getElementById('start-purchase-copy');
+const startPurchaseConfirmEl = document.getElementById('start-purchase-confirm');
+const startPurchaseCancelEl = document.getElementById('start-purchase-cancel');
 const touchControlsEl = document.querySelector('.touch-controls');
 const touchActionEl = document.getElementById('touch-action');
 const touchJoystickEl = document.getElementById('touch-joystick');
@@ -49,9 +57,14 @@ const crashRecordEl = document.getElementById('crash-record');
 const crashStatsEl = document.getElementById('crash-stats');
 const crashHelpEl = document.getElementById('crash-help');
 const AUDIO_FILES = {
-  gameOver: { url: 'assets/game-over.mp3', volume: 0.72 },
-  hook: { url: 'assets/hook-swoosh.wav', volume: 1 },
-  hookRelease: { url: 'assets/hook-release.wav', volume: 1 },
+  gameOver: { url: 'assets/game-over.mp3', volume: 0.252 },
+  hook: { url: 'assets/hook-swoosh.wav', volume: 0.38 },
+  hookRelease: { url: 'assets/hook-release.wav', volume: 0.25 },
+  coin: { url: 'assets/coin.wav', volume: 0.82 },
+  saw: { url: 'assets/saw.wav', volume: 0.6 },
+  swingA: { url: 'assets/swing-a.wav', volume: 0.95 },
+  swingB: { url: 'assets/swing-b.wav', volume: 0.95 },
+  swingC: { url: 'assets/swing-c.wav', volume: 0.95 },
 };
 const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
 
@@ -131,6 +144,8 @@ const SOUND_ENABLED_KEY = 'ropeManSoundEnabledV1';
 const COLOR_THEME_KEY = 'ropeManColorThemeV1';
 const ASSIST_ENABLED_KEY = 'ropeManAssistEnabledV1';
 const CAMERA_ZOOM_LEVEL_KEY = 'ropeManCameraZoomLevelV1';
+const COIN_BALANCE_KEY = 'ropeManCoinBalanceV1';
+const OWNED_HATS_KEY = 'ropeManOwnedHatsV1';
 const SEED_PARAM = 'seed';
 const BASE62_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const MAX_SEED_TEXT_LENGTH = 6;
@@ -144,6 +159,13 @@ const GAME_MODES = {
 };
 const GAME_MODE_ORDER = Object.keys(GAME_MODES);
 const DEFAULT_GAME_MODE = 'freeRoam';
+const COIN_VALUE = 10;
+const HAT_COST = 100;
+const RECORD_SEED_BONUS = 50;
+const RECORD_OVERALL_BONUS = 100;
+const RECORD_BONUS_MIN_METERS = 60;
+const DISTANCE_BONUS_METERS = 100;
+const DISTANCE_BONUS_VALUE = 50;
 const ESCAPE_WAVE_APPEAR_DELAY = 1.45;
 const ESCAPE_WAVE_CATCHUP_RAMP = 1.8;
 const ESCAPE_WAVE_BASE_SPEED = 132;
@@ -258,6 +280,55 @@ function writeStorageJson(key, value) {
   }
 }
 
+function normalizeOwnedHatIds(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  return new Set(list.filter(hatId => typeof hatId === 'string' && /^[a-z0-9-]+$/.test(hatId)));
+}
+
+function readOwnedHatIds() {
+  return normalizeOwnedHatIds(readStorageJson(OWNED_HATS_KEY, []));
+}
+
+function writeOwnedHatIds() {
+  writeStorageJson(OWNED_HATS_KEY, Array.from(ownedHatIds).sort());
+}
+
+function hatExists(hatId) {
+  return Boolean(hatId && typeof CHARACTER_HATS !== 'undefined' && CHARACTER_HATS[hatId]);
+}
+
+function hatIsOwned(hatId) {
+  return !hatId || ownedHatIds.has(hatId);
+}
+
+function canAffordHat(hatId) {
+  return Boolean(hatExists(hatId) && !hatIsOwned(hatId) && coinBalance >= HAT_COST);
+}
+
+function updateWalletUi() {
+  if (coinBalanceEl) coinBalanceEl.textContent = coinBalance;
+  if (startWalletBalanceEl) startWalletBalanceEl.textContent = coinBalance;
+  if (typeof syncCustomizationUi === 'function') syncCustomizationUi();
+}
+
+function addCoinBalance(amount) {
+  const value = Math.max(0, Math.floor(Number(amount) || 0));
+  if (!value) return;
+  coinBalance += value;
+  writeStorageNumber(COIN_BALANCE_KEY, coinBalance);
+  updateWalletUi();
+}
+
+function tryPurchaseHat(hatId) {
+  if (!canAffordHat(hatId)) return false;
+  coinBalance = Math.max(0, coinBalance - HAT_COST);
+  ownedHatIds.add(hatId);
+  writeStorageNumber(COIN_BALANCE_KEY, coinBalance);
+  writeOwnedHatIds();
+  updateWalletUi();
+  return true;
+}
+
 function readStorageBoolean(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -316,6 +387,7 @@ function setSoundEnabled(enabled) {
   soundEnabled = Boolean(enabled);
   writeStorageBoolean(SOUND_ENABLED_KEY, soundEnabled);
   if (!soundEnabled && typeof stopGameOverSound === 'function') stopGameOverSound();
+  if (!soundEnabled && typeof stopSawSound === 'function') stopSawSound(true);
   if (typeof updateStartSettingsUi === 'function') updateStartSettingsUi();
 }
 
@@ -669,6 +741,8 @@ function saveCharacterAppearance() {
   writeStorageJson(CHARACTER_APPEARANCE_KEY, characterAppearance);
 }
 
+let coinBalance = readStorageNumber(COIN_BALANCE_KEY);
+let ownedHatIds = readOwnedHatIds();
 let soundEnabled = readStorageBoolean(SOUND_ENABLED_KEY, true);
 let colorTheme = readColorThemePreference();
 let assistEnabled = readStorageBoolean(ASSIST_ENABLED_KEY, false);
@@ -681,6 +755,7 @@ let gameSeedValue = requestedSeedValue ?? randomSeedValue();
 let gameSeedText = seedTextFromValue(gameSeedValue);
 let rngState = gameSeedValue;
 let backgroundRngState = gameSeedValue;
+let coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
 let gameMode = readGameModePreference();
 let gameStarted = false;
 let scoreMeters = 0;
@@ -741,6 +816,7 @@ function setGameMode(mode, options = {}) {
 function updateScoreHud() {
   const tracksStats = gameModeTracksStats();
   if (scoreEl) scoreEl.textContent = scoreMeters;
+  updateWalletUi();
   if (bestEl) {
     bestEl.textContent = best;
     if (bestEl.parentElement) bestEl.parentElement.hidden = !tracksStats;
@@ -787,10 +863,25 @@ function updateRecordsForScore(meters) {
   }
 }
 
+function awardDistanceMilestoneBonuses(meters) {
+  if (replayMode || !gameModeTracksStats()) return;
+  const milestone = Math.floor(Math.max(0, Math.floor(meters)) / DISTANCE_BONUS_METERS);
+  if (milestone <= currentRunDistanceBonusMilestone) return;
+  const bonus = (milestone - currentRunDistanceBonusMilestone) * DISTANCE_BONUS_VALUE;
+  currentRunDistanceBonusMilestone = milestone;
+  currentRunDistanceBonus += bonus;
+  currentRunCoinsEarned += bonus;
+  addCoinBalance(bonus);
+  playCoinSound();
+}
+
 function refreshScoreAndRecords() {
   furthestX = Math.max(furthestX, player.x);
   scoreMeters = Math.max(0, Math.floor((furthestX - scoreStartX) / WORLD_PX_PER_METER));
-  if (!replayMode) updateRecordsForScore(scoreMeters);
+  if (!replayMode) {
+    updateRecordsForScore(scoreMeters);
+    awardDistanceMilestoneBonuses(scoreMeters);
+  }
   updateScoreHud();
   return scoreMeters;
 }
@@ -802,6 +893,7 @@ function setGameSeed(seedValue, options = {}) {
   gameSeedText = seedTextFromValue(gameSeedValue);
   rngState = gameSeedValue;
   backgroundRngState = gameSeedValue;
+  coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
   syncCurrentSeedStats();
   if (previousSeedValue !== gameSeedValue && typeof clearReplayHistory === 'function') {
     clearReplayHistory();
@@ -897,6 +989,10 @@ let gameAudioPrimed = false;
 let audioContext = null;
 let audioLoadStarted = false;
 let currentGameOverSource = null;
+const sawSoundLoops = new Map();
+let nextSwingSoundAt = 0;
+let lastSwingAngle = null;
+let lastSwingAnchorId = null;
 const audioBuffers = {};
 let furthestX = 0;
 let scoreStartX = 0;
@@ -927,6 +1023,10 @@ const PLAYER_RADIUS = 15;
 const PLAYER_HEIGHT_METERS = 1.7;
 const PLAYER_VISUAL_HEIGHT_PX = 124;
 const WORLD_PX_PER_METER = PLAYER_VISUAL_HEIGHT_PX / PLAYER_HEIGHT_METERS;
+const COIN_RADIUS = 13;
+const COIN_MIN_START_METERS = 40;
+const COIN_MIN_START_DISTANCE = COIN_MIN_START_METERS * WORLD_PX_PER_METER;
+const COIN_SPAWN_CHANCE = 1;
 const ANCHOR_TERRAIN_CLEARANCE_METERS = 3.6;
 const ANCHOR_TERRAIN_CLEARANCE = ANCHOR_TERRAIN_CLEARANCE_METERS * WORLD_PX_PER_METER;
 const ANCHOR_GATE_HORIZONTAL_CLEARANCE = 220;
@@ -989,6 +1089,12 @@ applyCustomRopeColor();
 
 let anchors = [];
 let obstacles = [];
+let coins = [];
+let collectedCoinIds = new Set();
+let currentRunCoinsEarned = 0;
+let currentRunRecordBonus = 0;
+let currentRunDistanceBonus = 0;
+let currentRunDistanceBonusMilestone = 0;
 let bgShapes = [];
 let terrainKnots = [];
 let terrainPools = [];
@@ -1046,6 +1152,11 @@ function backgroundRandom() {
   return backgroundRngState / 0x100000000;
 }
 
+function coinRandom() {
+  coinRngState = nextRandomState(coinRngState);
+  return coinRngState / 0x100000000;
+}
+
 function skipWorldRandomCalls(count) {
   for (let i = 0; i < count; i += 1) {
     rngState = nextRandomState(rngState);
@@ -1055,6 +1166,7 @@ function skipWorldRandomCalls(count) {
 function resetRandomStreams() {
   rngState = gameSeedValue;
   backgroundRngState = gameSeedValue;
+  coinRngState = normalizeSeedValue(gameSeedValue ^ 0xc2b2ae35);
   // Background seeding used to consume the shared world RNG before terrain,
   // obstacles, and anchors were generated. Keep that initial offset so the
   // existing seed maps stay aligned, then keep scrolling background cosmetics
@@ -1064,5 +1176,6 @@ function resetRandomStreams() {
 
 const rand = (a, b) => a + random() * (b - a);
 const backgroundRand = (a, b) => a + backgroundRandom() * (b - a);
+const coinRand = (a, b) => a + coinRandom() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const hypot = Math.hypot;

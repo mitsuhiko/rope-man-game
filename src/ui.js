@@ -208,10 +208,17 @@ function updateCrashSummary() {
   } else if (runHadSeedRecord) {
     message = 'new seed record!';
   }
+  const coinText = currentRunCoinsEarned > 0 ? ` · +${currentRunCoinsEarned}₶` : '';
+  if (currentRunDistanceBonus > 0) {
+    help.unshift(`distance bonus: +${currentRunDistanceBonus}₶`);
+  }
+  if (currentRunRecordBonus > 0) {
+    help.unshift(`record bonus: +${currentRunRecordBonus}₶`);
+  }
   setRunMenuContent({
     title: 'CRASH',
     record: message,
-    stats: `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}`,
+    stats: `score ${scoreMeters}m · ${attemptLabel} on seed ${gameSeedText}${coinText}`,
     help,
     continueVisible: false,
     replayVisible: canReplay,

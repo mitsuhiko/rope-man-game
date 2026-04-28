@@ -63,12 +63,12 @@ const characterAccessoryImages = {};
 const characterAccessoryPaperCanvases = {};
 
 function selectedHatId() {
-  return characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat] ? characterAppearance.hat : null;
+  return characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat] && hatIsOwned(characterAppearance.hat) ? characterAppearance.hat : null;
 }
 
 function setCharacterAppearance(nextAppearance = {}) {
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hat')) {
-    characterAppearance.hat = nextAppearance.hat && CHARACTER_HATS[nextAppearance.hat] ? nextAppearance.hat : null;
+    characterAppearance.hat = nextAppearance.hat && CHARACTER_HATS[nextAppearance.hat] && hatIsOwned(nextAppearance.hat) ? nextAppearance.hat : null;
   }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'color')) {
     characterAppearance.color = normalizeCharacterColorId(nextAppearance.color);
