@@ -50,6 +50,7 @@ const CHARACTER_HATS = {
   'silly-face': { src: 'assets/hats/silly-face.png', label: 'silly face', width: 40, height: 42, up: 0, side: 0, renderHead: false },
   skull: { src: 'assets/hats/skull.png', label: 'skull', width: 37, height: 42, up: 2, side: 0, renderHead: false },
   'sombrero': { src: 'assets/hats/sombrero.png', label: 'sombrero', width: 50, height: 33, up: 17, side: 0 },
+  'spider-man': { src: 'assets/skins/spider-man-mask.png', label: 'spider man', width: 34, height: 35, up: 3, side: 0, renderHead: false, preserveColors: true, premiumSkin: true, skinFigure: 'spider-man', price: 500 },
   'spiky-hair': { src: 'assets/hats/spiky-hair.png', label: 'spiky hair', width: 45, height: 40, up: 12, side: 1 },
   sunglasses: { src: 'assets/hats/sunglasses.png', label: 'sunglasses', width: 41, height: 14, up: 0, side: 1 },
   'swoop-hair': { src: 'assets/hats/swoop-hair.png', label: 'swoop hair', width: 48, height: 34, up: 11, side: -2 },
@@ -73,8 +74,19 @@ function selectedHatId() {
 }
 
 function setCharacterAppearance(nextAppearance = {}) {
+  if (Object.prototype.hasOwnProperty.call(nextAppearance, 'figure')) {
+    characterAppearance.figure = typeof normalizeCharacterFigureId === 'function'
+      ? normalizeCharacterFigureId(nextAppearance.figure)
+      : (nextAppearance.figure || 'classic');
+    applyCustomRopeColor();
+  }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'hat')) {
     characterAppearance.hat = nextAppearance.hat && CHARACTER_HATS[nextAppearance.hat] && hatIsOwned(nextAppearance.hat) ? nextAppearance.hat : null;
+    const skinFigure = characterAppearance.hat && CHARACTER_HATS[characterAppearance.hat].skinFigure;
+    characterAppearance.figure = typeof normalizeCharacterFigureId === 'function'
+      ? normalizeCharacterFigureId(skinFigure || 'classic')
+      : (skinFigure || 'classic');
+    applyCustomRopeColor();
   }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'color')) {
     characterAppearance.color = normalizeCharacterColorId(nextAppearance.color);
@@ -86,7 +98,9 @@ function setCharacterAppearance(nextAppearance = {}) {
     characterAppearance.hatUsesCustomColor = Boolean(nextAppearance.hatUsesCustomColor);
   }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'ropeColor')) {
-    characterAppearance.ropeColor = normalizeCharacterColorId(nextAppearance.ropeColor || DEFAULT_ROPE_COLOR);
+    characterAppearance.ropeColor = typeof normalizeRopeColorId === 'function'
+      ? normalizeRopeColorId(nextAppearance.ropeColor || DEFAULT_ROPE_COLOR)
+      : normalizeCharacterColorId(nextAppearance.ropeColor || DEFAULT_ROPE_COLOR);
     applyCustomRopeColor();
   }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'backpack')) {
@@ -97,7 +111,11 @@ function setCharacterAppearance(nextAppearance = {}) {
 }
 
 function characterInkColor() {
-  return characterColorForTheme(characterAppearance.color);
+  return (typeof characterRenderStyle === 'function' ? characterRenderStyle().torsoColor : null) || characterColorForTheme(characterAppearance.color);
+}
+
+function characterHookColor() {
+  return (typeof characterRenderStyle === 'function' ? characterRenderStyle().hookColor : null) || MUTED_LINE;
 }
 
 function hatInkColor() {
@@ -105,7 +123,18 @@ function hatInkColor() {
   return characterColorForTheme(colorId);
 }
 
+function selectedFigureHeadSpec() {
+  if (typeof characterRenderStyle !== 'function') return null;
+  const head = characterRenderStyle().head;
+  return head && head.src ? head : null;
+}
+
 function selectedHatRendersHead() {
+  const headSpec = selectedFigureHeadSpec();
+  if (headSpec) {
+    const img = typeof characterFigureHeadImage === 'function' ? characterFigureHeadImage() : null;
+    return !(img && img.complete && img.naturalWidth > 0);
+  }
   const hatId = selectedHatId();
   const spec = hatId && CHARACTER_HATS[hatId];
   return !spec || spec.renderHead !== false;
@@ -123,6 +152,7 @@ function accessoryImageForHat(hatId) {
 
 function preloadCharacterAppearance() {
   accessoryImageForHat(selectedHatId());
+  if (typeof preloadCharacterFigureAssets === 'function') preloadCharacterFigureAssets();
 }
 
 function rgbFromHexColor(color) {
@@ -276,6 +306,7 @@ function drawCharacterHat(core) {
     drawPrimitiveHat(core);
     return;
   }
+  if (spec.skinFigure) return;
 
   const { body, side, head } = core;
   const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
@@ -288,6 +319,24 @@ function drawCharacterHat(core) {
     preloadCharacterAppearance();
     drawPrimitiveHat(core);
   }
+}
+
+function drawCharacterFigureHead(core) {
+  const headSpec = selectedFigureHeadSpec();
+  if (!headSpec) return false;
+
+  const { body, side, head } = core;
+  const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+  const mul = (v, s) => ({ x: v.x * s, y: v.y * s });
+  const center = add(add(head, mul(body, -(headSpec.up || 0))), mul(side, headSpec.side || 0));
+  const img = typeof characterFigureHeadImage === 'function' ? characterFigureHeadImage() : null;
+  if (!img) return false;
+  if (img.complete && img.naturalWidth > 0) {
+    drawOrientedImage(img, center, side, body, headSpec.width || 28, headSpec.height || 28);
+    return true;
+  }
+  preloadCharacterAppearance();
+  return false;
 }
 
 function drawStickman() {
@@ -342,43 +391,82 @@ function drawStickman() {
   drawCharacterBackpack(core);
 
   ctx.save();
-  const characterInk = characterInkColor();
-  ctx.strokeStyle = characterInk;
-  ctx.fillStyle = PAPER;
-  ctx.lineWidth = 3.8;
+  const renderStyle = typeof characterRenderStyle === 'function'
+    ? characterRenderStyle()
+    : {
+      armColor: characterInkColor(),
+      legColor: characterInkColor(),
+      torsoColor: characterInkColor(),
+      handColor: characterInkColor(),
+      outlineColor: null,
+      armWidth: 3.8,
+      legWidth: 3.8,
+      torsoWidth: 3.8,
+      gripHandRadius: 4,
+      freeHandRadius: 3,
+    };
+
+  const strokeSegments = (segments, color, width) => {
+    const outlineColor = renderStyle.outlineColor;
+    const outlineWidth = width + 1.8;
+    if (outlineColor) {
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = outlineWidth;
+      ctx.beginPath();
+      for (const [a, b] of segments) line(a, b);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    for (const [a, b] of segments) line(a, b);
+    ctx.stroke();
+  };
+
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  ctx.beginPath();
-  line(shoulder, freeElbow);
-  line(freeElbow, freeHand);
-  line(shoulder, gripElbow);
-  line(gripElbow, grip);
-  line(shoulder, neckEnd);
-  line(shoulder, hip);
-  line(hip, kneeA);
-  line(kneeA, footA);
-  line(hip, kneeB);
-  line(kneeB, footB);
-  ctx.stroke();
+  strokeSegments([
+    [shoulder, freeElbow],
+    [freeElbow, freeHand],
+    [shoulder, gripElbow],
+    [gripElbow, grip],
+  ], renderStyle.armColor, renderStyle.armWidth);
+
+  strokeSegments([
+    [shoulder, neckEnd],
+    [shoulder, hip],
+  ], renderStyle.torsoColor, renderStyle.torsoWidth);
+
+  strokeSegments([
+    [hip, kneeA],
+    [kneeA, footA],
+    [hip, kneeB],
+    [kneeB, footB],
+  ], renderStyle.legColor, renderStyle.legWidth);
 
   if (selectedHatRendersHead()) {
+    const headStroke = renderStyle.outlineColor || renderStyle.torsoColor;
     ctx.fillStyle = PAPER;
+    ctx.strokeStyle = headStroke;
+    ctx.lineWidth = renderStyle.torsoWidth;
     ctx.beginPath();
     ctx.arc(sx(head.x), sy(head.y), headR, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
 
+  drawCharacterFigureHead(core);
   drawCharacterHat(core);
 
-  ctx.fillStyle = characterInk;
+  ctx.fillStyle = renderStyle.handColor;
   ctx.beginPath();
-  ctx.arc(sx(grip.x), sy(grip.y), 4, 0, Math.PI * 2);
-  ctx.arc(sx(freeHand.x), sy(freeHand.y), 3, 0, Math.PI * 2);
+  ctx.arc(sx(grip.x), sy(grip.y), renderStyle.gripHandRadius, 0, Math.PI * 2);
+  ctx.arc(sx(freeHand.x), sy(freeHand.y), renderStyle.freeHandRadius, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();
 }
 
+if (typeof applyCustomRopeColor === 'function') applyCustomRopeColor();
 preloadCharacterAppearance();

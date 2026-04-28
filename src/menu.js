@@ -115,8 +115,50 @@ function hatLabel(hatId) {
 }
 
 function characterColorLabel(colorId) {
+  if (colorId === SKIN_ROPE_COLOR) return 'skin';
   const spec = typeof CHARACTER_COLOR_PALETTES !== 'undefined' ? CHARACTER_COLOR_PALETTES[colorId] : null;
   return spec && spec.label ? spec.label : (colorId || DEFAULT_CHARACTER_COLOR).replace(/-/g, ' ');
+}
+
+function currentSkinHatSpec() {
+  if (typeof selectedCharacterSkinHatSpec === 'function') return selectedCharacterSkinHatSpec();
+  const hatId = characterAppearance.hat;
+  const spec = hatId && typeof CHARACTER_HATS !== 'undefined' ? CHARACTER_HATS[hatId] : null;
+  return spec && spec.skinFigure && hatIsOwned(hatId) ? spec : null;
+}
+
+function skinHatLocksColors() {
+  return Boolean(currentSkinHatSpec());
+}
+
+function skinRopeColorOptionAvailable() {
+  return Boolean(currentSkinHatSpec() && typeof skinRopeColorForTheme === 'function' && skinRopeColorForTheme());
+}
+
+function figureAllowsBodyColor() {
+  return !skinHatLocksColors();
+}
+
+function figureAllowsHatColor() {
+  return !skinHatLocksColors();
+}
+
+function figureAllowsRopeColor() {
+  return true;
+}
+
+function figureAllowsHats() {
+  return true;
+}
+
+function normalizeColorEditTargetForFigure() {
+  const allowedTargets = [];
+  if (figureAllowsBodyColor()) allowedTargets.push('body');
+  if (figureAllowsHatColor()) allowedTargets.push('hat');
+  allowedTargets.push('rope');
+  if (!allowedTargets.includes(colorEditTarget)) {
+    colorEditTarget = allowedTargets[0] || 'rope';
+  }
 }
 
 function currentSelectedColor() {
@@ -130,7 +172,10 @@ function currentSelectedHatColor() {
 }
 
 function currentSelectedRopeColor() {
-  return normalizeCharacterColorId(characterAppearance.ropeColor || DEFAULT_ROPE_COLOR);
+  const normalized = typeof normalizeRopeColorId === 'function'
+    ? normalizeRopeColorId(characterAppearance.ropeColor || DEFAULT_ROPE_COLOR)
+    : normalizeCharacterColorId(characterAppearance.ropeColor || DEFAULT_ROPE_COLOR);
+  return normalized === SKIN_ROPE_COLOR && !skinRopeColorOptionAvailable() ? DEFAULT_ROPE_COLOR : normalized;
 }
 
 function currentColorForEditTarget() {
@@ -145,30 +190,56 @@ function currentSelectedHat() {
 }
 
 function syncCustomizationUi() {
+  normalizeColorEditTargetForFigure();
   const selectedHat = currentSelectedHat();
   const selectedColor = currentSelectedColor();
   const selectedHatColor = currentSelectedHatColor();
   const selectedRopeColor = currentSelectedRopeColor();
+  const selectedSkin = currentSkinHatSpec();
+  const allowBodyColor = figureAllowsBodyColor();
+  const allowHatColor = figureAllowsHatColor();
+  const allowRopeColor = figureAllowsRopeColor();
+  const allowHats = figureAllowsHats();
+
   if (startCharacterSelectionEl) {
     const hatText = selectedHat ? hatLabel(selectedHat) : 'none';
-    const hatColorText = characterAppearance.hatUsesCustomColor ? characterColorLabel(selectedHatColor) : 'black';
-    startCharacterSelectionEl.textContent = `hat: ${hatText} · body: ${characterColorLabel(selectedColor)} · hat: ${hatColorText} · rope: ${characterColorLabel(selectedRopeColor)}`;
+    const ropeText = characterColorLabel(selectedRopeColor);
+    if (selectedSkin) {
+      startCharacterSelectionEl.textContent = `skin: ${hatText} · suit colors locked · rope: ${ropeText}`;
+    } else {
+      const hatColorText = characterAppearance.hatUsesCustomColor ? characterColorLabel(selectedHatColor) : 'black';
+      startCharacterSelectionEl.textContent = `hat/skin: ${hatText} · body: ${characterColorLabel(selectedColor)} · hat: ${hatColorText} · rope: ${ropeText}`;
+    }
   }
+
+  const colorTargetSection = document.getElementById('start-color-target-section');
+  const colorSection = document.getElementById('start-color-section');
+  const hatSection = document.getElementById('start-hat-section');
+  const hasAnyColorTarget = allowBodyColor || allowHatColor || allowRopeColor;
+
+  if (colorTargetSection) colorTargetSection.hidden = !hasAnyColorTarget;
+  if (colorSection) colorSection.hidden = !hasAnyColorTarget;
+  if (hatSection) hatSection.hidden = !allowHats;
+
   if (startColorTargetBodyEl) {
     const selected = colorEditTarget === 'body';
+    startColorTargetBodyEl.hidden = !allowBodyColor;
     startColorTargetBodyEl.classList.toggle('is-selected', selected);
     startColorTargetBodyEl.setAttribute('aria-pressed', selected ? 'true' : 'false');
   }
   if (startColorTargetHatEl) {
     const selected = colorEditTarget === 'hat';
+    startColorTargetHatEl.hidden = !allowHatColor;
     startColorTargetHatEl.classList.toggle('is-selected', selected);
     startColorTargetHatEl.setAttribute('aria-pressed', selected ? 'true' : 'false');
   }
   if (startColorTargetRopeEl) {
     const selected = colorEditTarget === 'rope';
+    startColorTargetRopeEl.hidden = !allowRopeColor;
     startColorTargetRopeEl.classList.toggle('is-selected', selected);
     startColorTargetRopeEl.setAttribute('aria-pressed', selected ? 'true' : 'false');
   }
+
   if (startHatGridEl) {
     for (const button of startHatGridEl.querySelectorAll('.hat-choice')) {
       const hatId = button.dataset.hat || null;
@@ -180,16 +251,19 @@ function syncCustomizationUi() {
       button.classList.toggle('is-locked', Boolean(hatId && !isOwned));
       button.classList.toggle('is-affordable', isAffordable);
       button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
-      button.setAttribute('aria-disabled', hatId && !isOwned && !isAffordable ? 'true' : 'false');
-      if (costEl) costEl.textContent = !hatId ? 'free' : (isOwned ? 'owned' : `${HAT_COST}¢`);
+      button.setAttribute('aria-disabled', !allowHats || (hatId && !isOwned && !isAffordable) ? 'true' : 'false');
+      button.disabled = !allowHats;
+      if (costEl) costEl.textContent = !hatId ? 'free' : (isOwned ? 'owned' : `${hatCost(hatId)}¢`);
     }
   }
+
   if (startColorGridEl) {
     const selectedEditColor = currentColorForEditTarget();
     for (const button of startColorGridEl.querySelectorAll('.color-choice')) {
       const isSelected = button.dataset.color === selectedEditColor;
       button.classList.toggle('is-selected', isSelected);
       button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      button.disabled = !hasAnyColorTarget;
     }
   }
 }
@@ -220,10 +294,11 @@ function showHatPurchasePopover(hatId, returnFocus = null) {
     }
   }
   if (startPurchaseTitleEl) startPurchaseTitleEl.textContent = `buy ${hatLabel(hatId)}?`;
+  const price = hatCost(hatId);
   if (startPurchaseCopyEl) {
-    startPurchaseCopyEl.textContent = `Spend ${HAT_COST}¢? You will have ${Math.max(0, coinBalance - HAT_COST)}¢ left.`;
+    startPurchaseCopyEl.textContent = `Spend ${price}¢? You will have ${Math.max(0, coinBalance - price)}¢ left.`;
   }
-  if (startPurchaseConfirmEl) startPurchaseConfirmEl.textContent = `buy ${HAT_COST}¢`;
+  if (startPurchaseConfirmEl) startPurchaseConfirmEl.textContent = `buy ${price}¢`;
   setPurchasePopoverVisible(true, { restoreFocus: false });
   return true;
 }
@@ -236,7 +311,9 @@ function confirmHatPurchase() {
   }
   if (tryPurchaseHat(hatId)) {
     setCharacterAppearance({ hat: hatId });
+    normalizeColorEditTargetForFigure();
     renderHatChoices();
+    renderColorChoices();
   }
   setPurchasePopoverVisible(false);
   syncCustomizationUi();
@@ -245,7 +322,8 @@ function confirmHatPurchase() {
 function selectHat(hatId, sourceButton = null) {
   if (!hatId) {
     setCharacterAppearance({ hat: null });
-    syncCustomizationUi();
+    normalizeColorEditTargetForFigure();
+    renderColorChoices();
     return;
   }
   if (!hatIsOwned(hatId)) {
@@ -254,11 +332,14 @@ function selectHat(hatId, sourceButton = null) {
     return;
   }
   setCharacterAppearance({ hat: hatId });
-  syncCustomizationUi();
+  normalizeColorEditTargetForFigure();
+  renderColorChoices();
 }
 
 function selectCharacterColor(colorId) {
+  normalizeColorEditTargetForFigure();
   if (colorEditTarget === 'hat') {
+    if (!figureAllowsHatColor()) return;
     const normalizedColor = normalizeCharacterColorId(colorId);
     setCharacterAppearance({
       hatColor: normalizedColor,
@@ -266,8 +347,11 @@ function selectCharacterColor(colorId) {
     });
     if (startHatGridEl && startHatGridEl.children.length) renderHatChoices();
   } else if (colorEditTarget === 'rope') {
+    if (!figureAllowsRopeColor()) return;
+    if (colorId === SKIN_ROPE_COLOR && !skinRopeColorOptionAvailable()) return;
     setCharacterAppearance({ ropeColor: colorId });
   } else {
+    if (!figureAllowsBodyColor()) return;
     setCharacterAppearance({ color: colorId });
   }
   syncCustomizationUi();
@@ -275,7 +359,8 @@ function selectCharacterColor(colorId) {
 
 function setColorEditTarget(target) {
   colorEditTarget = target === 'hat' || target === 'rope' ? target : 'body';
-  syncCustomizationUi();
+  normalizeColorEditTargetForFigure();
+  renderColorChoices();
 }
 
 function bindHatChoiceButton(button, action) {
@@ -339,23 +424,32 @@ function makeHatChoice(hatId) {
 
   const cost = document.createElement('span');
   cost.className = 'hat-choice-cost';
-  cost.textContent = !hatId ? 'free' : (hatIsOwned(hatId) ? 'owned' : `${HAT_COST}¢`);
+  const price = hatId ? hatCost(hatId) : 0;
+  cost.textContent = !hatId ? 'free' : (hatIsOwned(hatId) ? 'owned' : `${price}¢`);
 
   button.append(preview, label, cost);
-  button.setAttribute('aria-label', hatId ? `${hatLabel(hatId)}, ${hatIsOwned(hatId) ? 'owned' : `${HAT_COST} cents`}` : hatLabel(hatId));
+  button.setAttribute('aria-label', hatId ? `${hatLabel(hatId)}, ${hatIsOwned(hatId) ? 'owned' : `${price} cents`}` : hatLabel(hatId));
   bindHatChoiceButton(button, () => selectHat(hatId, button));
   return button;
 }
 
+function colorChoicesForEditTarget() {
+  const colors = typeof CHARACTER_COLOR_ORDER !== 'undefined' ? CHARACTER_COLOR_ORDER : Object.keys(CHARACTER_COLOR_PALETTES);
+  return colorEditTarget === 'rope' && skinRopeColorOptionAvailable()
+    ? [SKIN_ROPE_COLOR, ...colors]
+    : colors;
+}
+
 function makeColorChoice(colorId) {
-  const spec = CHARACTER_COLOR_PALETTES[colorId];
+  const isSkinColor = colorId === SKIN_ROPE_COLOR;
+  const spec = isSkinColor ? { label: 'skin' } : CHARACTER_COLOR_PALETTES[colorId];
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'color-choice';
   button.dataset.color = colorId;
   button.setAttribute('role', 'radio');
   button.setAttribute('aria-label', characterColorLabel(colorId));
-  button.style.setProperty('--character-swatch', characterColorForTheme(colorId));
+  button.style.setProperty('--character-swatch', isSkinColor ? ropeColorForTheme(SKIN_ROPE_COLOR) : characterColorForTheme(colorId));
 
   const swatch = document.createElement('span');
   swatch.className = 'color-choice-swatch';
@@ -372,8 +466,8 @@ function makeColorChoice(colorId) {
 
 function renderColorChoices() {
   if (!startColorGridEl || typeof CHARACTER_COLOR_PALETTES === 'undefined') return;
-  const colors = typeof CHARACTER_COLOR_ORDER !== 'undefined' ? CHARACTER_COLOR_ORDER : Object.keys(CHARACTER_COLOR_PALETTES);
-  startColorGridEl.replaceChildren(...colors.map(makeColorChoice));
+  normalizeColorEditTargetForFigure();
+  startColorGridEl.replaceChildren(...colorChoicesForEditTarget().map(makeColorChoice));
   syncCustomizationUi();
 }
 

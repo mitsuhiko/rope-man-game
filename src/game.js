@@ -2361,21 +2361,31 @@ function restoreReplayRenderGlobals(saved) {
   ropeShot = cloneReplayRopeShot(saved.ropeShot);
   escapeWaveFrontX = saved.escapeWaveFrontX;
   escapeWaveSpeed = saved.escapeWaveSpeed;
+  characterAppearance.figure = typeof normalizeCharacterFigureId === 'function'
+    ? normalizeCharacterFigureId(saved.appearance.figure)
+    : (saved.appearance.figure || 'classic');
   characterAppearance.hat = saved.appearance.hat || null;
   characterAppearance.color = normalizeCharacterColorId(saved.appearance.color);
   characterAppearance.hatColor = normalizeCharacterColorId(saved.appearance.hatColor);
   characterAppearance.hatUsesCustomColor = Boolean(saved.appearance.hatUsesCustomColor);
-  characterAppearance.ropeColor = normalizeCharacterColorId(saved.appearance.ropeColor || DEFAULT_ROPE_COLOR);
+  characterAppearance.ropeColor = typeof normalizeRopeColorId === 'function'
+    ? normalizeRopeColorId(saved.appearance.ropeColor || DEFAULT_ROPE_COLOR)
+    : normalizeCharacterColorId(saved.appearance.ropeColor || DEFAULT_ROPE_COLOR);
   applyCustomRopeColor();
   characterAppearance.backpack = Boolean(saved.appearance.backpack);
 }
 
 function applyReplayAppearance(appearance = {}) {
+  characterAppearance.figure = typeof normalizeCharacterFigureId === 'function'
+    ? normalizeCharacterFigureId(appearance.figure)
+    : (appearance.figure || 'classic');
   characterAppearance.hat = appearance.hat || null;
   characterAppearance.color = normalizeCharacterColorId(appearance.color);
   characterAppearance.hatColor = normalizeCharacterColorId(appearance.hatColor);
   characterAppearance.hatUsesCustomColor = Boolean(appearance.hatUsesCustomColor);
-  characterAppearance.ropeColor = normalizeCharacterColorId(appearance.ropeColor || DEFAULT_ROPE_COLOR);
+  characterAppearance.ropeColor = typeof normalizeRopeColorId === 'function'
+    ? normalizeRopeColorId(appearance.ropeColor || DEFAULT_ROPE_COLOR)
+    : normalizeCharacterColorId(appearance.ropeColor || DEFAULT_ROPE_COLOR);
   applyCustomRopeColor();
   characterAppearance.backpack = Boolean(appearance.backpack);
   if (typeof preloadCharacterAppearance === 'function') preloadCharacterAppearance();

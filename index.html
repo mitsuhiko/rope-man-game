@@ -1533,7 +1533,7 @@
         <div class="start-character-teaser">
           <div>
             <span class="start-character-title">character workshop</span>
-            <span id="start-character-selection" class="start-character-note">hat: none · body: black · hat: black · rope: brown</span>
+            <span id="start-character-selection" class="start-character-note">hat/skin: none · body: black · hat: black · rope: brown</span>
           </div>
           <button id="start-customize-open" class="start-button start-button--ghost" type="button" aria-controls="start-customization-menu" aria-expanded="false">customize</button>
         </div>
@@ -1552,12 +1552,12 @@
         <div class="customization-head">
           <div>
             <h2 id="customization-title" class="customization-title">customize Rope Man</h2>
-            <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10¢ in free roam, 20¢ in escape the wave, and saw coins are 50¢. Hats cost 100¢.</p>
+            <p class="customization-copy">Pick what to color, then choose a color. Coins near hazards are 10¢ in free roam, 20¢ in escape the wave, and saw coins are 50¢. Hats and skins have their own prices.</p>
             <div class="customization-wallet">balance <span id="start-wallet-balance">0</span>¢</div>
           </div>
           <button id="start-customize-close" class="start-button start-button--ghost" type="button">back</button>
         </div>
-        <div class="customization-section">
+        <div id="start-color-target-section" class="customization-section">
           <h3 class="customization-subtitle">what to color</h3>
           <div class="color-target-grid" aria-label="Color target">
             <button id="start-color-target-body" class="color-target-choice is-selected" type="button" aria-pressed="true">body</button>
@@ -1565,20 +1565,20 @@
             <button id="start-color-target-rope" class="color-target-choice" type="button" aria-pressed="false">rope</button>
           </div>
         </div>
-        <div class="customization-section">
+        <div id="start-color-section" class="customization-section">
           <h3 class="customization-subtitle">color</h3>
           <div id="start-color-grid" class="color-grid" role="radiogroup" aria-label="Character color choices"></div>
         </div>
-        <div class="customization-section">
-          <h3 class="customization-subtitle">hat</h3>
-          <div id="start-hat-grid" class="hat-grid" role="radiogroup" aria-label="Hat choices"></div>
+        <div id="start-hat-section" class="customization-section">
+          <h3 class="customization-subtitle">hats and skins</h3>
+          <div id="start-hat-grid" class="hat-grid" role="radiogroup" aria-label="Hat and skin choices"></div>
         </div>
       </section>
       <section id="start-purchase-popover" class="purchase-popover" role="dialog" aria-modal="true" aria-labelledby="start-purchase-title" hidden>
         <div class="purchase-card">
           <div id="start-purchase-preview" class="purchase-preview" aria-hidden="true"></div>
           <h2 id="start-purchase-title" class="purchase-title">buy hat?</h2>
-          <p id="start-purchase-copy" class="purchase-copy">Spend 100¢ on this hat?</p>
+          <p id="start-purchase-copy" class="purchase-copy">Spend coins on this hat or skin?</p>
           <div class="purchase-actions">
             <button id="start-purchase-cancel" class="start-button start-button--ghost" type="button">cancel</button>
             <button id="start-purchase-confirm" class="start-button start-button--primary start-button--ghost" type="button">buy</button>
@@ -1631,7 +1631,7 @@
             <li>Use <strong>A/D</strong> or <strong>←/→</strong> (or joystick left/right) to swing.</li>
             <li>Use <strong>W/S</strong> or <strong>↑/↓</strong> (or joystick up/down) to reel the rope in and out.</li>
             <li>Avoid spikes, saws, gates, and liquid pools.</li>
-            <li>Collect coins to buy hats in the customize menu.</li>
+            <li>Collect coins to buy hats and skins in the customize menu.</li>
             <li>Enable <strong>assist</strong> and try <strong>practice mode</strong> to learn safely.</li>
           </ul>
           <p>Tip: release at the bottom of a swing for speed, then hook again quickly.</p>
@@ -1676,6 +1676,7 @@
 
   <!-- Classic scripts share the game scope; keep state first and bootstrap last. -->
   <script src="src/state.js"></script>
+  <script src="src/character-figures.js"></script>
   <script src="src/audio.js"></script>
   <script src="src/ui.js"></script>
   <script src="src/menu.js"></script>

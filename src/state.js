@@ -96,6 +96,7 @@ const CHARACTER_COLOR_PALETTES = {
 const CHARACTER_COLOR_ORDER = Object.keys(CHARACTER_COLOR_PALETTES);
 const DEFAULT_CHARACTER_COLOR = 'black';
 const DEFAULT_ROPE_COLOR = 'brown';
+const SKIN_ROPE_COLOR = 'skin';
 
 const THEME_PALETTES = {
   light: {
@@ -306,12 +307,18 @@ function hatExists(hatId) {
   return Boolean(hatId && typeof CHARACTER_HATS !== 'undefined' && CHARACTER_HATS[hatId]);
 }
 
+function hatCost(hatId) {
+  const spec = hatExists(hatId) ? CHARACTER_HATS[hatId] : null;
+  const price = Number(spec && spec.price);
+  return Number.isFinite(price) && price >= 0 ? Math.floor(price) : HAT_COST;
+}
+
 function hatIsOwned(hatId) {
   return !hatId || (DEV_UNLOCK_HATS && hatExists(hatId)) || ownedHatIds.has(hatId);
 }
 
 function canAffordHat(hatId) {
-  return Boolean(hatExists(hatId) && !hatIsOwned(hatId) && coinBalance >= HAT_COST);
+  return Boolean(hatExists(hatId) && !hatIsOwned(hatId) && coinBalance >= hatCost(hatId));
 }
 
 function updateWalletUi() {
@@ -330,7 +337,7 @@ function addCoinBalance(amount) {
 
 function tryPurchaseHat(hatId) {
   if (!canAffordHat(hatId)) return false;
-  coinBalance = Math.max(0, coinBalance - HAT_COST);
+  coinBalance = Math.max(0, coinBalance - hatCost(hatId));
   ownedHatIds.add(hatId);
   writeStorageNumber(COIN_BALANCE_KEY, coinBalance);
   writeOwnedHatIds();
@@ -534,6 +541,10 @@ function normalizeCharacterColorId(colorId) {
   return colorId && CHARACTER_COLOR_PALETTES[colorId] ? colorId : DEFAULT_CHARACTER_COLOR;
 }
 
+function normalizeRopeColorId(colorId) {
+  return colorId === SKIN_ROPE_COLOR ? SKIN_ROPE_COLOR : normalizeCharacterColorId(colorId || DEFAULT_ROPE_COLOR);
+}
+
 function characterColorSpec(colorId = characterAppearance.color) {
   return CHARACTER_COLOR_PALETTES[normalizeCharacterColorId(colorId)] || CHARACTER_COLOR_PALETTES[DEFAULT_CHARACTER_COLOR];
 }
@@ -543,7 +554,15 @@ function characterColorForTheme(colorId = characterAppearance.color, theme = col
   return spec[theme === 'dark' ? 'dark' : 'light'] || spec.light;
 }
 
+function skinRopeColorForTheme(theme = colorTheme) {
+  const figureStyle = typeof characterRenderStyle === 'function' ? characterRenderStyle() : null;
+  return figureStyle && figureStyle.ropeColor ? figureStyle.ropeColor : null;
+}
+
 function ropeColorForTheme(colorId = DEFAULT_ROPE_COLOR, theme = colorTheme) {
+  if (colorId === SKIN_ROPE_COLOR) {
+    return skinRopeColorForTheme(theme) || characterColorForTheme(DEFAULT_ROPE_COLOR, theme);
+  }
   return characterColorForTheme(normalizeCharacterColorId(colorId || DEFAULT_ROPE_COLOR), theme);
 }
 
@@ -554,11 +573,12 @@ function applyCustomRopeColor() {
 function loadCharacterAppearance() {
   const raw = readStorageJson(CHARACTER_APPEARANCE_KEY, {});
   return {
+    figure: raw && typeof raw.figure === 'string' ? raw.figure : 'classic',
     hat: raw && typeof raw.hat === 'string' ? raw.hat : null,
     color: normalizeCharacterColorId(raw && typeof raw.color === 'string' ? raw.color : null),
     hatColor: normalizeCharacterColorId(raw && typeof raw.hatColor === 'string' ? raw.hatColor : null),
     hatUsesCustomColor: Boolean(raw && raw.hatUsesCustomColor),
-    ropeColor: normalizeCharacterColorId(raw && typeof raw.ropeColor === 'string' ? raw.ropeColor : DEFAULT_ROPE_COLOR),
+    ropeColor: normalizeRopeColorId(raw && typeof raw.ropeColor === 'string' ? raw.ropeColor : DEFAULT_ROPE_COLOR),
     backpack: Boolean(raw && raw.backpack),
   };
 }

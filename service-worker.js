@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v48';
+const CACHE_NAME = 'rope-man-app-v50';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -14,6 +14,7 @@ const CORE_ASSETS = [
   "src/menu.js",
   "src/pwa.js",
   "src/state.js",
+  "src/character-figures.js",
   "src/ui.js",
   "src/world.js",
   "assets/game-over.mp3",
@@ -85,7 +86,8 @@ const CORE_ASSETS = [
   "assets/hats/viking-helmet.png",
   "assets/hats/walrus-mustache.png",
   "assets/hats/apple-face.png",
-  "assets/hats/wizard-hat.png"
+  "assets/hats/wizard-hat.png",
+  "assets/skins/spider-man-mask.png"
 ];
 
 function appUrl(path) {
