@@ -17,6 +17,7 @@ const CHARACTER_FIGURES = {
     allowHatColor: false,
     allowRopeColor: true,
     ropeColor: { light: '#e2e8f0', dark: '#f1f5f9' },
+    ropeStyle: 'web',
     hookColor: { light: '#2a67ff', dark: '#7fb0ff' },
     style: {
       armColor: { light: '#1d4ed8', dark: '#60a5fa' },
@@ -146,6 +147,7 @@ function characterRenderStyle(figureId = selectedCharacterFigureId()) {
     head,
     hookColor: characterFigureThemeColor(figureSpec && figureSpec.hookColor, MUTED_LINE),
     ropeColor: characterFigureThemeColor(figureSpec && figureSpec.ropeColor, null),
+    ropeStyle: figureSpec && figureSpec.ropeStyle ? figureSpec.ropeStyle : 'line',
   };
 }
 

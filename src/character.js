@@ -28,6 +28,123 @@ function hookHandPosition() {
   return { x: hookArm.x, y: hookArm.y };
 }
 
+function characterRopeRenderStyle() {
+  const renderStyle = typeof characterRenderStyle === 'function' ? characterRenderStyle() : null;
+  return renderStyle && renderStyle.ropeStyle ? renderStyle.ropeStyle : 'line';
+}
+
+function drawWebRopeLine(a, b, width = 4, options = {}) {
+  const x0 = sx(a.x);
+  const y0 = sy(a.y);
+  const x1 = sx(b.x);
+  const y1 = sy(b.y);
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  const amp = clamp(width * 2.05, 5.5, 10.5);
+  const wavelength = 56;
+  const connectorSpacing = 46;
+  const phase = Number.isFinite(Number(options.phase)) ? Number(options.phase) : 0;
+  const steps = Math.max(14, Math.min(90, Math.ceil(len / 11)));
+
+  // Keep the web phase anchored to distance from the start of the rope.
+  // This makes the pattern extend/clip as the rope length changes instead of
+  // re-fitting the whole wave to the new endpoint every frame.
+  const webPointAtDistance = (distance, offsetPhase = 0, scale = 1) => {
+    const s = clamp(distance, 0, len);
+    const wave = Math.sin((s / wavelength) * Math.PI * 2 + phase + offsetPhase) * amp * scale;
+    return {
+      x: x0 + ux * s + px * wave,
+      y: y0 + uy * s + py * wave,
+    };
+  };
+
+  const strokeWave = (offsetPhase, lineWidth, alpha, scale = 1) => {
+    const savedAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = savedAlpha * alpha;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i += 1) {
+      const p = webPointAtDistance((len * i) / steps, offsetPhase, scale);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = savedAlpha;
+  };
+
+  ctx.save();
+  ctx.strokeStyle = ROPE;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (options.alpha !== undefined) ctx.globalAlpha *= options.alpha;
+
+  strokeWave(0, width + 1.8, 0.95, 0.92);
+  strokeWave(Math.PI, Math.max(2.8, width), 0.86, 0.84);
+
+  const savedConnectorAlpha = ctx.globalAlpha;
+  ctx.globalAlpha = savedConnectorAlpha * 0.9;
+  ctx.lineWidth = Math.max(2.4, width - 0.8);
+  ctx.beginPath();
+  let connectorIndex = 0;
+  for (let s0 = connectorSpacing * 0.18; s0 < len - connectorSpacing * 0.18; s0 += connectorSpacing) {
+    const s1 = Math.min(len, s0 + connectorSpacing * 0.56);
+    const side = connectorIndex % 2 === 0 ? 1 : -1;
+    const p0 = webPointAtDistance(s0, side > 0 ? 0 : Math.PI, 0.9);
+    const p1 = webPointAtDistance(s1, side > 0 ? Math.PI : 0, 0.9);
+    const sc = (s0 + s1) * 0.5;
+    const cx = x0 + ux * sc + px * amp * 1.28 * side;
+    const cy = y0 + uy * sc + py * amp * 1.28 * side;
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(cx, cy, p1.x, p1.y);
+    connectorIndex += 1;
+  }
+  ctx.stroke();
+  ctx.globalAlpha = savedConnectorAlpha;
+
+  if (options.knotStart || options.knotEnd) {
+    ctx.globalAlpha *= 0.82;
+    ctx.lineWidth = Math.max(2.6, width - 0.5);
+    const drawKnot = (x, y, dir) => {
+      const r = Math.max(7, amp * 0.75);
+      ctx.beginPath();
+      for (let i = 0; i < 4; i += 1) {
+        const side = i % 2 === 0 ? 1 : -1;
+        ctx.moveTo(x + ux * r * 0.25 * dir, y + uy * r * 0.25 * dir);
+        ctx.quadraticCurveTo(
+          x + px * r * side + ux * r * (0.55 + i * 0.08) * dir,
+          y + py * r * side + uy * r * (0.55 + i * 0.08) * dir,
+          x + px * r * -side * 0.55 + ux * r * (1.05 + i * 0.1) * dir,
+          y + py * r * -side * 0.55 + uy * r * (1.05 + i * 0.1) * dir,
+        );
+      }
+      ctx.stroke();
+    };
+    if (options.knotStart) drawKnot(x0, y0, 1);
+    if (options.knotEnd) drawKnot(x1, y1, -1);
+  }
+
+  ctx.restore();
+}
+
+function drawCharacterRopeLine(a, b, width = 4, options = {}) {
+  if (characterRopeRenderStyle() === 'web') {
+    drawWebRopeLine(a, b, width, options);
+    return;
+  }
+  ctx.strokeStyle = ROPE;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sx(a.x), sy(a.y));
+  ctx.lineTo(sx(b.x), sy(b.y));
+  ctx.stroke();
+}
+
 function updateHookArmAim(dt) {
   const desired = desiredHookHandPosition();
   if (!hookArm.initialized || gameOver || !ragdoll.initialized || !ragdoll.joints.shoulder) {
@@ -77,22 +194,12 @@ function drawRopeAndPlayer() {
   if (player.attached && player.anchor) {
     const ropeEnd = hookHandPosition();
     ctx.save();
-    ctx.strokeStyle = ROPE;
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
-    ctx.lineTo(sx(ropeEnd.x), sy(ropeEnd.y));
-    ctx.stroke();
+    drawCharacterRopeLine(player.anchor, ropeEnd, 4, { knotStart: true });
 
     if (ropeShot && ropeShot.anchor === player.anchor) {
       const p = clamp(ropeShot.t / ropeShot.duration, 0, 1);
       ctx.globalAlpha = 1 - p;
-      ctx.lineWidth = 8 - p * 4;
-      ctx.beginPath();
-      ctx.moveTo(sx(player.anchor.x), sy(player.anchor.y));
-      ctx.lineTo(sx(ropeEnd.x), sy(ropeEnd.y));
-      ctx.stroke();
+      drawCharacterRopeLine(player.anchor, ropeEnd, 8 - p * 4, { knotStart: true });
       ctx.globalAlpha = 0.8 - p * 0.5;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -122,14 +229,8 @@ function drawRopeAndPlayer() {
     const baseY = tipY - uy * 23;
     const halfW = 6.5;
 
-    ctx.strokeStyle = ROPE;
     ctx.globalAlpha = 0.9;
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(sx(hookHand.x), sy(hookHand.y));
-    ctx.lineTo(sx(notchX), sy(notchY));
-    ctx.stroke();
+    drawCharacterRopeLine(hookHand, { x: notchX, y: notchY }, 3, { knotEnd: true });
 
     const hookColor = typeof characterHookColor === 'function' ? characterHookColor() : MUTED_LINE;
     ctx.fillStyle = hookColor;

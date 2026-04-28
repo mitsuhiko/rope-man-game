@@ -86,6 +86,9 @@ function setCharacterAppearance(nextAppearance = {}) {
     characterAppearance.figure = typeof normalizeCharacterFigureId === 'function'
       ? normalizeCharacterFigureId(skinFigure || 'classic')
       : (skinFigure || 'classic');
+    if (skinFigure && characterAppearance.ropeColor === DEFAULT_ROPE_COLOR) {
+      characterAppearance.ropeColor = SKIN_ROPE_COLOR;
+    }
     applyCustomRopeColor();
   }
   if (Object.prototype.hasOwnProperty.call(nextAppearance, 'color')) {
