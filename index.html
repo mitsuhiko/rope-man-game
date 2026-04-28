@@ -505,6 +505,8 @@
       width: min(92vw, 760px);
       max-height: calc(100vh - 48px);
       max-height: calc(100dvh - 48px);
+      min-height: 0;
+      overflow: hidden;
       text-align: left;
       transform: rotate(-0.12deg);
     }
@@ -545,11 +547,19 @@
     }
 
     .customization-section {
+      flex: 0 0 auto;
       margin-top: 14px;
     }
 
     .customization-section:first-of-type {
       margin-top: 0;
+    }
+
+    .start-customization-menu .customization-section:last-child {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .customization-subtitle {
@@ -1301,6 +1311,7 @@
       .start-customization-menu,
       .start-scores-menu {
         max-height: none;
+        overflow: visible;
       }
       .start-title {
         font-size: clamp(38px, 13vw, 58px);
