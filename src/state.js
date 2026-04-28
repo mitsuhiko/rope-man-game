@@ -756,7 +756,8 @@ let assistEnabled = readStorageBoolean(ASSIST_ENABLED_KEY, false);
 applyVisualTheme(colorTheme);
 
 const initialSearchParams = new URLSearchParams(window.location.search);
-const DEV_UNLOCK_HATS = initialSearchParams.get('dev') === '1';
+const DEV_MODE = initialSearchParams.get('dev') === '1';
+const DEV_UNLOCK_HATS = DEV_MODE;
 const requestedSeedValue = seedValueFromText(initialSearchParams.get(SEED_PARAM));
 const hasRequestedSeed = requestedSeedValue !== null;
 let gameSeedValue = requestedSeedValue ?? randomSeedValue();
@@ -765,6 +766,24 @@ let rngState = gameSeedValue;
 let backgroundRngState = gameSeedValue;
 const BACKGROUND_STYLE_GEOMETRIC = 'geometric';
 const BACKGROUND_STYLE_STARS = 'stars';
+const BACKGROUND_STYLE_CLOUDS = 'clouds';
+const BACKGROUND_STYLE_MOUNTAINS = 'mountains';
+const BACKGROUND_STYLE_CITY = 'city';
+const BACKGROUND_STYLE_FOREST = 'forest';
+const BACKGROUND_STYLE_BUBBLES = 'bubbles';
+const BACKGROUND_STYLE_RAIN = 'rain';
+const BACKGROUND_STYLE_CRYSTALS = 'crystals';
+const BACKGROUND_STYLE_IDS = [
+  BACKGROUND_STYLE_GEOMETRIC,
+  BACKGROUND_STYLE_STARS,
+  BACKGROUND_STYLE_CLOUDS,
+  BACKGROUND_STYLE_MOUNTAINS,
+  BACKGROUND_STYLE_CITY,
+  BACKGROUND_STYLE_FOREST,
+  BACKGROUND_STYLE_BUBBLES,
+  BACKGROUND_STYLE_RAIN,
+  BACKGROUND_STYLE_CRYSTALS,
+];
 const BACKGROUND_STYLE_SELECTION_SALT = 0x9e3779b9;
 let backgroundStyleRngState = normalizeSeedValue(gameSeedValue ^ BACKGROUND_STYLE_SELECTION_SALT);
 let backgroundStyleId = BACKGROUND_STYLE_GEOMETRIC;
@@ -1177,7 +1196,8 @@ function backgroundStyleRandom() {
 }
 
 function chooseSeedBackgroundStyle() {
-  return backgroundStyleRandom() < 0.5 ? BACKGROUND_STYLE_GEOMETRIC : BACKGROUND_STYLE_STARS;
+  const index = Math.min(BACKGROUND_STYLE_IDS.length - 1, Math.floor(backgroundStyleRandom() * BACKGROUND_STYLE_IDS.length));
+  return BACKGROUND_STYLE_IDS[index] || BACKGROUND_STYLE_GEOMETRIC;
 }
 
 function coinRandom() {

@@ -1525,7 +1525,20 @@ function isCameraZoomKey(e) {
   return e.key === '+' || e.key === '=' || e.code === 'Equal' || e.code === 'NumpadAdd';
 }
 
+function isTextEntryKeyTarget(target) {
+  return target && target.closest && target.closest('input, textarea, select, [contenteditable="true"]');
+}
+
 window.addEventListener('keydown', (e) => {
+  if (DEV_MODE && e.code === 'KeyB' && !isTextEntryKeyTarget(e.target)) {
+    e.preventDefault();
+    if (!e.repeat && typeof cycleBackgroundStyle === 'function') {
+      const styleId = cycleBackgroundStyle();
+      console.info(`[dev] background: ${styleId}`);
+    }
+    return;
+  }
+
   if (!gameStarted) return;
   if (replayMode) {
     e.preventDefault();

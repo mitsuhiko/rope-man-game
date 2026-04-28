@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v42';
+const CACHE_NAME = 'rope-man-app-v47';
 const CORE_ASSETS = [
   "./",
   "index.html",
@@ -58,7 +58,6 @@ const CORE_ASSETS = [
   "assets/hats/horseshoe-mustache.png",
   "assets/hats/jagged-beard.png",
   "assets/hats/jester-hat.png",
-  "assets/hats/lantern-face.png",
   "assets/hats/long-beard.png",
   "assets/hats/long-hair.png",
   "assets/hats/messy-hair.png",

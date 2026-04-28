@@ -675,6 +675,19 @@ function drawTerrain() {
 
   ctx.save();
 
+  const groundBottomY = cameraY + cameraViewH() + 420;
+  ctx.fillStyle = PAPER;
+  ctx.beginPath();
+  for (let i = 0; i < surface.length; i++) {
+    const p = surface[i];
+    if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
+    else ctx.lineTo(sx(p.x), sy(p.y));
+  }
+  ctx.lineTo(sx(right), sy(groundBottomY));
+  ctx.lineTo(sx(left), sy(groundBottomY));
+  ctx.closePath();
+  ctx.fill();
+
   for (const pool of terrainPools) {
     if (pool.x > right || pool.x + pool.w < left) continue;
     drawTerrainPool(pool, left, right);
