@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rope-man-app-v38';
+const CACHE_NAME = 'rope-man-app-v39';
 const CORE_ASSETS = [
   "./",
   "index.html",

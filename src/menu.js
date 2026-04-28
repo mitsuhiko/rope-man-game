@@ -234,6 +234,7 @@ function confirmHatPurchase() {
   }
   if (tryPurchaseHat(hatId)) {
     setCharacterAppearance({ hat: hatId });
+    renderHatChoices();
   }
   setPurchasePopoverVisible(false);
   syncCustomizationUi();
@@ -374,10 +375,16 @@ function renderColorChoices() {
   syncCustomizationUi();
 }
 
+function orderedHatChoices() {
+  const hats = typeof CHARACTER_HAT_ORDER !== 'undefined' ? CHARACTER_HAT_ORDER : Object.keys(CHARACTER_HATS);
+  const owned = hats.filter(hatIsOwned);
+  const locked = hats.filter(hatId => !hatIsOwned(hatId));
+  return [...owned, ...locked];
+}
+
 function renderHatChoices() {
   if (!startHatGridEl || typeof CHARACTER_HATS === 'undefined') return;
-  const hats = typeof CHARACTER_HAT_ORDER !== 'undefined' ? CHARACTER_HAT_ORDER : Object.keys(CHARACTER_HATS);
-  startHatGridEl.replaceChildren(makeHatChoice(null), ...hats.map(makeHatChoice));
+  startHatGridEl.replaceChildren(makeHatChoice(null), ...orderedHatChoices().map(makeHatChoice));
   syncCustomizationUi();
 }
 
