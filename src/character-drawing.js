@@ -52,6 +52,7 @@ const CHARACTER_HATS = {
   'swoop-hair': { src: 'assets/hats/swoop-hair.png', label: 'swoop hair', width: 48, height: 34, up: 11, side: -2 },
   teeth: { src: 'assets/hats/teeth.png', label: 'teeth', width: 40, height: 54, up: 4, side: 0, renderHead: false },
   'top-hat': { src: 'assets/hats/top-hat.png', label: 'top hat', width: 42, height: 39, up: 20, side: 0 },
+  'troll-face': { src: 'assets/hats/troll-face.png', label: 'troll face', width: 47, height: 39, up: 0, side: 0, renderHead: false },
   'tv-head': { src: 'assets/hats/tv-head.png', label: 'tv head', width: 42, height: 47, up: 3, side: 0 },
   'viking-beard': { src: 'assets/hats/viking-beard.png', label: 'viking beard', width: 35, height: 49, up: -8, side: 0 },
   'viking-helmet': { src: 'assets/hats/viking-helmet.png', label: 'viking', width: 48, height: 35, up: 21, side: 0 },
