@@ -30,6 +30,7 @@ let practiceCheckpoint = null;
 let practiceCheckpointHistory = [];
 let practiceCheckpointIndex = 0;
 let practiceRestoredFromCheckpoint = false;
+let practiceCheckpointLocked = false;
 
 function reset(options = {}) {
   const tracksHighScores = currentRunTracksHighScores();
@@ -364,11 +365,64 @@ function resetPracticeCheckpoints() {
   practiceCheckpointHistory = [];
   practiceCheckpointIndex = 0;
   practiceRestoredFromCheckpoint = false;
-  if (!gameModeUsesPracticeCheckpoints()) return;
+  practiceCheckpointLocked = false;
+  if (!gameModeUsesPracticeCheckpoints()) {
+    syncPracticeSpawnLockUi();
+    return;
+  }
 
   ensurePracticeBackAnchors(player.anchor);
   practiceCheckpoint = capturePracticeState();
   practiceCheckpointHistory = [practiceCheckpoint];
+  syncPracticeSpawnLockUi();
+}
+
+function syncPracticeSpawnLockUi() {
+  const inPractice = gameModeUsesPracticeCheckpoints();
+  if (gameShellEl) gameShellEl.classList.toggle('is-practice', inPractice);
+  if (!touchSpawnLockEl) return;
+
+  const canLock = inPractice && !gameOver && !replayMode && player.attached && player.anchor;
+  touchSpawnLockEl.hidden = !inPractice;
+  touchSpawnLockEl.classList.toggle('is-locked', practiceCheckpointLocked);
+  touchSpawnLockEl.textContent = practiceCheckpointLocked ? 'unlock spawn (L)' : 'lock spawn (L)';
+  touchSpawnLockEl.setAttribute('aria-pressed', practiceCheckpointLocked ? 'true' : 'false');
+  touchSpawnLockEl.setAttribute('aria-label', practiceCheckpointLocked ? 'Unlock practice spawn point' : 'Lock practice spawn point');
+  touchSpawnLockEl.disabled = !practiceCheckpointLocked && !canLock;
+}
+
+function unlockPracticeSpawnPoint() {
+  practiceCheckpointLocked = false;
+  practiceRestoredFromCheckpoint = false;
+  practiceCheckpointHistory = [];
+  practiceCheckpointIndex = 0;
+  if (gameModeUsesPracticeCheckpoints()) {
+    ensurePracticeBackAnchors(player.anchor);
+    if (player.attached && player.anchor) practiceCheckpoint = capturePracticeState();
+    practiceCheckpointHistory = practiceCheckpoint ? [practiceCheckpoint] : [];
+  } else {
+    practiceCheckpoint = null;
+  }
+  syncPracticeSpawnLockUi();
+  return true;
+}
+
+function togglePracticeSpawnLock() {
+  if (!gameModeUsesPracticeCheckpoints() || replayMode) return false;
+  if (practiceCheckpointLocked) return unlockPracticeSpawnPoint();
+  if (!player.attached || !player.anchor) {
+    syncPracticeSpawnLockUi();
+    return false;
+  }
+
+  ensurePracticeBackAnchors(player.anchor);
+  practiceCheckpoint = capturePracticeState();
+  practiceCheckpointHistory = [practiceCheckpoint];
+  practiceCheckpointIndex = 0;
+  practiceRestoredFromCheckpoint = false;
+  practiceCheckpointLocked = true;
+  syncPracticeSpawnLockUi();
+  return true;
 }
 
 function samePracticeAnchor(a, b) {
@@ -416,6 +470,10 @@ function rememberPracticeReleaseCheckpoint() {
 function markPracticeHook(anchor = player.anchor) {
   if (!gameModeUsesPracticeCheckpoints() || replayMode) return;
   ensurePracticeBackAnchors(anchor);
+  if (practiceCheckpointLocked) {
+    syncPracticeSpawnLockUi();
+    return;
+  }
 
   // Practice respawns at the hook state one anchor before the latest hook, not
   // at the moment you let go.  Release-time snapshots can already be doomed by
@@ -505,6 +563,7 @@ function restorePracticeCheckpoint(snapshot) {
   stopGameOverSound();
   if (typeof resetJoystickInput === 'function') resetJoystickInput();
   if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
+  syncPracticeSpawnLockUi();
   updateScoreHud();
   return true;
 }
@@ -519,7 +578,7 @@ function resetPracticeAfterDeath() {
   // If the restored checkpoint itself leads to another death before a new hook
   // is reached, do not trap the player there forever. Back up through the hook
   // history one anchor at a time until recovery is possible.
-  if (practiceRestoredFromCheckpoint && practiceCheckpointIndex > 0) {
+  if (!practiceCheckpointLocked && practiceRestoredFromCheckpoint && practiceCheckpointIndex > 0) {
     practiceCheckpointHistory = practiceCheckpointHistory.slice(0, practiceCheckpointIndex);
     setPracticeCheckpointIndex(practiceCheckpointHistory.length - 1);
   }
@@ -1487,6 +1546,12 @@ window.addEventListener('keydown', (e) => {
     if (!e.repeat) cycleCameraZoom();
     return;
   }
+  if (!gamePaused && !gameOver && e.code === 'KeyL') {
+    e.preventDefault();
+    primeGameAudio();
+    if (!e.repeat && togglePracticeSpawnLock()) playBingSound();
+    return;
+  }
   primeGameAudio();
   if (gamePaused && e.code === 'KeyR') {
     e.preventDefault();
@@ -2046,6 +2111,94 @@ function drawAssistReelCue() {
   drawAssistLabel(cue.label, endX + labelPad, endY - 18, labelAlign, 25, cue);
 }
 
+function practiceSpawnMarkerColor(alpha = 1) {
+  const color = colorTheme === 'dark' ? '#ffd166' : '#c88a00';
+  return assistHexToRgba(color, alpha);
+}
+
+function drawPracticeSpawnLockIcon(size) {
+  const shackleW = size * 0.68;
+  const shackleH = size * 0.55;
+  const bodyW = size * 0.82;
+  const bodyH = size * 0.62;
+  const bodyY = size * 0.02;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = PAPER;
+  ctx.fillStyle = PAPER;
+  ctx.lineWidth = 6;
+  roundedRectPath(-bodyW / 2, bodyY, bodyW, bodyH, size * 0.12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, bodyY, shackleW / 2, Math.PI, Math.PI * 2);
+  ctx.lineTo(shackleW / 2, bodyY + shackleH * 0.28);
+  ctx.moveTo(-shackleW / 2, bodyY);
+  ctx.lineTo(-shackleW / 2, bodyY + shackleH * 0.28);
+  ctx.stroke();
+
+  ctx.strokeStyle = practiceSpawnMarkerColor(1);
+  ctx.fillStyle = practiceSpawnMarkerColor(0.9);
+  ctx.lineWidth = 3.2;
+  roundedRectPath(-bodyW / 2, bodyY, bodyW, bodyH, size * 0.12);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, bodyY, shackleW / 2, Math.PI, Math.PI * 2);
+  ctx.lineTo(shackleW / 2, bodyY + shackleH * 0.28);
+  ctx.moveTo(-shackleW / 2, bodyY);
+  ctx.lineTo(-shackleW / 2, bodyY + shackleH * 0.28);
+  ctx.stroke();
+
+  ctx.fillStyle = PAPER;
+  ctx.beginPath();
+  ctx.arc(0, bodyY + bodyH * 0.43, size * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+  roundedRectPath(-size * 0.035, bodyY + bodyH * 0.43, size * 0.07, size * 0.18, size * 0.02);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPracticeSpawnLockMarker() {
+  if (!practiceCheckpointLocked || !practiceCheckpoint) return;
+  const anchor = practiceSnapshotAnchor(practiceCheckpoint);
+  if (!anchor) return;
+
+  const pulse = 0.5 + 0.5 * Math.sin(time * 7.5);
+  const radius = 25 + pulse * 4;
+  ctx.save();
+  ctx.translate(sx(anchor.x), sy(anchor.y));
+
+  ctx.save();
+  ctx.strokeStyle = practiceSpawnMarkerColor(0.82);
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([12, 8]);
+  ctx.rotate(time * 1.35);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = practiceSpawnMarkerColor(0.62);
+  ctx.globalAlpha = 0.62;
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([3, 9]);
+  ctx.rotate(-time * 1.05);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius + 15, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.rotate(Math.sin(time * 4.4) * 0.05);
+  drawPracticeSpawnLockIcon(20);
+  ctx.restore();
+}
+
 function drawAssistCue() {
   drawAssistRopePrediction();
   drawAssistReelCue();
@@ -2097,6 +2250,7 @@ function setWorldTransform() {
 function draw() {
   if (gameShellEl) gameShellEl.classList.toggle('is-replaying', replayMode);
   syncAssistCueUi();
+  syncPracticeSpawnLockUi();
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.clearRect(0, 0, screenW, screenH);
@@ -2114,6 +2268,7 @@ function draw() {
   drawObstacles();
   drawCoins();
   drawAnchors();
+  drawPracticeSpawnLockMarker();
   drawAssistCue();
   if (replayMode && activeReplayPlayback) {
     drawReplayGhosts();

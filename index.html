@@ -917,10 +917,26 @@
       z-index: 3;
     }
 
-    .touch-pause {
+    .game-shell.is-practice .touch-controls {
+      display: block;
+    }
+
+    .game-shell.is-starting .touch-controls {
+      display: none;
+    }
+
+    .touch-top-controls {
       position: fixed;
       left: calc(env(safe-area-inset-left, 0px) + 14px);
       top: calc(env(safe-area-inset-top, 0px) + 14px);
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .touch-pause,
+    .touch-spawn-lock {
       box-sizing: border-box;
       min-width: 66px;
       height: 46px;
@@ -944,6 +960,22 @@
       cursor: pointer;
     }
 
+    .touch-spawn-lock {
+      display: none;
+      min-width: 104px;
+    }
+
+    .game-shell.is-practice .touch-spawn-lock {
+      display: block;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .game-shell.is-practice .touch-action,
+      .game-shell.is-practice .touch-joystick {
+        display: none;
+      }
+    }
+
     .touch-pause::before {
       content: "Ⅱ";
       display: inline-block;
@@ -952,14 +984,22 @@
       transform: translateY(-1px);
     }
 
-    .touch-pause:active {
+    .touch-pause:active,
+    .touch-spawn-lock:active,
+    .touch-spawn-lock.is-locked {
       border-color: var(--ink);
       color: var(--ink);
       transform: translateY(1px) rotate(-0.4deg);
     }
 
+    .touch-spawn-lock:disabled {
+      opacity: 0.45;
+    }
+
     .game-shell.is-crashed .touch-pause,
-    .game-shell.is-replaying .touch-pause {
+    .game-shell.is-crashed .touch-spawn-lock,
+    .game-shell.is-replaying .touch-pause,
+    .game-shell.is-replaying .touch-spawn-lock {
       display: none;
     }
 
@@ -1527,7 +1567,10 @@
       <div class="score-meta score-attempts">attempt <span id="attempts">0</span></div>
     </section>
     <div class="touch-controls" aria-label="Touch controls">
-      <button id="touch-pause" class="touch-pause" type="button" aria-label="Pause game">pause</button>
+      <div class="touch-top-controls">
+        <button id="touch-pause" class="touch-pause" type="button" aria-label="Pause game">pause</button>
+        <button id="touch-spawn-lock" class="touch-spawn-lock" type="button" aria-label="Lock practice spawn point" aria-pressed="false" hidden>lock spawn (L)</button>
+      </div>
       <button id="touch-action" class="touch-action" type="button" aria-label="Hook or unhook"></button>
       <div id="touch-joystick" class="touch-joystick" aria-label="Move and reel joystick">
         <div class="touch-joystick-deadzone"></div>

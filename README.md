@@ -34,6 +34,7 @@ and see how many meters you can survive.
 | Swing left / right | `A` / `D` or `←` / `→` |
 | Reel rope in / out | `W` / `S` or `↑` / `↓` |
 | Cycle zoom level (saved between sessions) | `+` or `=` |
+| Lock / unlock practice spawn | `L` in practice mode |
 | Retry current seed | `R` |
 | Watch crash replays for this seed | `P` on the crash screen |
 | Pause / leave replay | `Esc` |
@@ -43,6 +44,7 @@ and see how many meters you can survive.
 
 - Tap the big action button to hook or release.
 - Use the joystick to swing left/right and reel the rope in/out.
+- In practice mode, tap `lock spawn` while hooked to keep respawning there.
 
 ## Local development
 

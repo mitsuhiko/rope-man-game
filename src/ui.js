@@ -278,6 +278,21 @@ function setupTouchControls() {
     });
   }
 
+  if (touchSpawnLockEl) {
+    touchSpawnLockEl.addEventListener('pointerdown', (e) => {
+      if (!mobileControlPointerAllowed(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!gameStarted || gameOver || gamePaused || replayMode) return;
+      primeGameAudio();
+      if (togglePracticeSpawnLock()) playBingSound();
+    }, { passive: false });
+    touchSpawnLockEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
+
   if (touchActionEl) {
     touchActionEl.addEventListener('pointerdown', (e) => {
       if (!mobileControlPointerAllowed(e)) return;

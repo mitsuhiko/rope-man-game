@@ -45,6 +45,7 @@ const startPurchaseConfirmEl = document.getElementById('start-purchase-confirm')
 const startPurchaseCancelEl = document.getElementById('start-purchase-cancel');
 const touchControlsEl = document.querySelector('.touch-controls');
 const touchPauseEl = document.getElementById('touch-pause');
+const touchSpawnLockEl = document.getElementById('touch-spawn-lock');
 const touchActionEl = document.getElementById('touch-action');
 const touchJoystickEl = document.getElementById('touch-joystick');
 const touchStickEl = document.getElementById('touch-stick');
@@ -816,6 +817,7 @@ function setGameMode(mode, options = {}) {
   if (persist) writeGameModePreference(gameMode);
   if (typeof syncGameModeSelectors === 'function') syncGameModeSelectors();
   if (typeof renderHighScoreList === 'function') renderHighScoreList();
+  if (typeof syncPracticeSpawnLockUi === 'function') syncPracticeSpawnLockUi();
   updateScoreHud();
 }
 
