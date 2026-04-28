@@ -48,7 +48,7 @@ function toggleAssistSetting() {
 }
 
 let highScoreSortMode = 'score';
-let highScoreGameMode = gameMode;
+let highScoreGameMode = gameModeTracksStats(gameMode) ? gameMode : DEFAULT_GAME_MODE;
 let colorEditTarget = 'body';
 
 function startGameWithSeed(seedValue) {
@@ -298,23 +298,26 @@ function renderHatChoices() {
   syncCustomizationUi();
 }
 
-function makeGameModeSelect(id, selectedMode = gameMode) {
+function makeGameModeSelect(id, selectedMode = gameMode, options = {}) {
+  const modes = options.modes || GAME_MODE_ORDER;
   const select = document.createElement('select');
   select.id = id;
   select.className = 'start-mode-select';
-  for (const mode of GAME_MODE_ORDER) {
+  for (const mode of modes) {
     const option = document.createElement('option');
     option.value = mode;
     option.textContent = gameModeLabel(mode);
     select.appendChild(option);
   }
-  select.value = normalizeGameMode(selectedMode);
+  const normalizedMode = normalizeGameMode(selectedMode);
+  select.value = modes.includes(normalizedMode) ? normalizedMode : (modes[0] || DEFAULT_GAME_MODE);
   return select;
 }
 
 function syncGameModeSelectors() {
   const mainSelect = document.getElementById('start-mode-select');
   if (mainSelect) mainSelect.value = gameMode;
+  if (!gameModeTracksStats(highScoreGameMode)) highScoreGameMode = DEFAULT_GAME_MODE;
   const scoreSelect = document.getElementById('start-scores-mode-select');
   if (scoreSelect) scoreSelect.value = highScoreGameMode;
 }
@@ -324,13 +327,15 @@ function setupGameModeSelects() {
     const select = makeGameModeSelect('start-mode-select', gameMode);
     select.addEventListener('change', () => {
       setGameMode(select.value);
-      highScoreGameMode = gameMode;
+      if (gameModeTracksStats(gameMode)) highScoreGameMode = gameMode;
       syncGameModeSelectors();
     });
     startModeSelectWrapEl.replaceChildren(select);
   }
   if (startScoresModeSelectWrapEl && !document.getElementById('start-scores-mode-select')) {
-    const select = makeGameModeSelect('start-scores-mode-select', highScoreGameMode);
+    const scoreModes = GAME_MODE_ORDER.filter(gameModeTracksStats);
+    if (!gameModeTracksStats(highScoreGameMode)) highScoreGameMode = scoreModes[0] || DEFAULT_GAME_MODE;
+    const select = makeGameModeSelect('start-scores-mode-select', highScoreGameMode, { modes: scoreModes });
     select.addEventListener('change', () => {
       highScoreGameMode = normalizeGameMode(select.value);
       syncGameModeSelectors();

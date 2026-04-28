@@ -139,6 +139,7 @@ const DEFAULT_RNG_SEED = 0x6d2b79f5;
 const REPLAY_FORMAT_VERSION = 1;
 const GAME_MODES = {
   freeRoam: { label: 'free roam' },
+  practice: { label: 'practice' },
   escapeWave: { label: 'escape the wave' },
 };
 const GAME_MODE_ORDER = Object.keys(GAME_MODES);
@@ -348,6 +349,10 @@ function gameModeLabel(mode = gameMode) {
   return spec && spec.label ? spec.label : normalizeGameMode(mode);
 }
 
+function gameModeTracksStats(mode = gameMode) {
+  return normalizeGameMode(mode) !== 'practice';
+}
+
 function readGameModePreference() {
   try {
     return normalizeGameMode(localStorage.getItem(GAME_MODE_KEY));
@@ -389,6 +394,7 @@ function normalizeSeedStatsRecord(rawStats) {
 }
 
 function rankedSeedStatEntries(mode = gameMode, sortMode = 'score', limit = 20) {
+  if (!gameModeTracksStats(mode)) return [];
   const statsForMode = seedStatsByMode[normalizeGameMode(mode)] || {};
   return Object.entries(statsForMode)
     .map(([seed, raw]) => ({
@@ -409,6 +415,7 @@ function rankedSeedStatEntries(mode = gameMode, sortMode = 'score', limit = 20) 
 function highScoreBoardSeedSet() {
   const seeds = new Set();
   for (const mode of GAME_MODE_ORDER) {
+    if (!gameModeTracksStats(mode)) continue;
     for (const entry of rankedSeedStatEntries(mode, 'score')) seeds.add(`${mode}:${entry.seed}`);
     for (const entry of rankedSeedStatEntries(mode, 'attempts')) seeds.add(`${mode}:${entry.seed}`);
   }
@@ -431,6 +438,7 @@ function loadSeedStatsByMode() {
 }
 
 function overallBestForMode(mode = gameMode) {
+  if (!gameModeTracksStats(mode)) return 0;
   const stats = seedStatsByMode && seedStatsByMode[normalizeGameMode(mode)] ? seedStatsByMode[normalizeGameMode(mode)] : {};
   const seedBest = Math.max(0, ...Object.values(stats).map((raw) => Math.max(0, Math.floor(Number(raw && raw.best) || 0))));
   if (normalizeGameMode(mode) === 'freeRoam') return Math.max(seedBest, loadOverallBestMeters());
@@ -628,6 +636,7 @@ function storedReplaysForSeed(seedText) {
 }
 
 function saveCurrentSeedReplayHistory() {
+  if (!gameModeTracksStats(gameMode)) return;
   if (!seedReplayStore[gameMode]) seedReplayStore[gameMode] = {};
   if (!memorySeedReplayStore[gameMode]) memorySeedReplayStore[gameMode] = {};
 
@@ -692,6 +701,7 @@ let runHadSeedRecord = false;
 let runFinalScore = 0;
 
 function currentSeedStats() {
+  if (!gameModeTracksStats()) return { best: 0, attempts: 0 };
   const raw = seedStats[gameSeedText];
   if (!raw || typeof raw !== 'object') return { best: 0, attempts: 0 };
   return {
@@ -707,6 +717,7 @@ function syncCurrentSeedStats() {
 }
 
 function persistCurrentSeedStats() {
+  if (!gameModeTracksStats()) return;
   seedStats[gameSeedText] = { best: seedBest, attempts: seedAttempts };
   seedStatsByMode[gameMode] = seedStats;
   writeStorageJson(SEED_STATS_KEY, seedStatsByMode);
@@ -728,26 +739,41 @@ function setGameMode(mode, options = {}) {
 }
 
 function updateScoreHud() {
+  const tracksStats = gameModeTracksStats();
   if (scoreEl) scoreEl.textContent = scoreMeters;
-  if (bestEl) bestEl.textContent = best;
-  if (seedBestEl) seedBestEl.textContent = seedBest;
-  if (attemptsEl) attemptsEl.textContent = seedAttempts;
+  if (bestEl) {
+    bestEl.textContent = best;
+    if (bestEl.parentElement) bestEl.parentElement.hidden = !tracksStats;
+  }
+  if (seedBestEl) {
+    seedBestEl.textContent = seedBest;
+    if (seedBestEl.parentElement) seedBestEl.parentElement.hidden = !tracksStats;
+  }
+  if (attemptsEl) {
+    attemptsEl.textContent = seedAttempts;
+    if (attemptsEl.parentElement) attemptsEl.parentElement.hidden = !tracksStats;
+  }
   if (seedEl) seedEl.textContent = gameSeedText;
 }
 
 function beginSeedAttempt() {
   syncCurrentSeedStats();
-  seedAttempts += 1;
   runStartBest = best;
   runStartSeedBest = seedBest;
   runHadOverallRecord = false;
   runHadSeedRecord = false;
   runFinalScore = 0;
+  if (!gameModeTracksStats()) {
+    updateScoreHud();
+    return;
+  }
+  seedAttempts += 1;
   persistCurrentSeedStats();
   updateScoreHud();
 }
 
 function updateRecordsForScore(meters) {
+  if (!gameModeTracksStats()) return;
   const score = Math.max(0, Math.floor(meters));
   if (score > best) {
     best = score;

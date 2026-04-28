@@ -16,12 +16,19 @@ const ASSIST_REEL_MIN_SURVIVAL_GAIN = 0.26;
 const ASSIST_REEL_SAFE_BONUS = 0.48;
 const ASSIST_REEL_MIN_LENGTH_CHANGE = 14;
 const ASSIST_REEL_INPUT_DEAD_ZONE = 0.35;
+const PRACTICE_BACK_ANCHOR_COUNT = 2;
+const PRACTICE_BACK_ANCHOR_START_GAP = 260;
+const PRACTICE_BACK_ANCHOR_SPACING = 320;
+const PRACTICE_BACK_ANCHOR_NEAR_X = 110;
+const PRACTICE_BACK_ANCHOR_NEAR_Y = 150;
 let assistCue = null;
 let assistReelCue = null;
+let practiceCheckpoint = null;
 
 function reset(options = {}) {
-  const countAttempt = options.countAttempt ?? (gameStarted && !replayMode);
-  const recordRun = options.recordRun ?? (gameStarted && !replayMode);
+  const tracksStats = gameModeTracksStats(gameMode);
+  const countAttempt = (options.countAttempt ?? (gameStarted && !replayMode)) && tracksStats;
+  const recordRun = (options.recordRun ?? (gameStarted && !replayMode)) && tracksStats;
 
   if (countAttempt && typeof resetJoystickInput === 'function') resetJoystickInput();
   resetRandomStreams();
@@ -86,6 +93,7 @@ function reset(options = {}) {
   cameraX = player.x - cameraViewW() * 0.42;
   cameraY = player.y - cameraViewH() * 0.52;
   resetEscapeWave();
+  resetPracticeCheckpoints();
   if (countAttempt) {
     beginSeedAttempt();
   } else {
@@ -257,6 +265,189 @@ function captureReplayState() {
     hookArm: cloneReplayHookArm(),
     ropeShot: cloneReplayRopeShot(),
   };
+}
+
+function gameModeUsesPracticeCheckpoints() {
+  return normalizeGameMode(gameMode) === 'practice';
+}
+
+function clonePracticeList(items) {
+  return (Array.isArray(items) ? items : []).map(item => ({ ...item }));
+}
+
+function practiceAnchorYBehind(reference, x, index) {
+  const referenceY = Number(reference && reference.y) || player.y;
+  const maxY = Math.min(terrainYAt(x) - ANCHOR_TERRAIN_CLEARANCE, anchorHazardMaxY(x));
+  const stagger = index % 2 === 0 ? 34 : -42;
+  return clamp(referenceY + stagger, ANCHOR_MIN_Y, maxY);
+}
+
+function practiceHasAnchorNear(x, y) {
+  return anchors.some(anchor => (
+    Math.abs(anchor.x - x) <= PRACTICE_BACK_ANCHOR_NEAR_X &&
+    Math.abs(anchor.y - y) <= PRACTICE_BACK_ANCHOR_NEAR_Y
+  ));
+}
+
+function ensurePracticeBackAnchors(reference = player.anchor || player) {
+  if (!gameModeUsesPracticeCheckpoints() || replayMode || !reference) return;
+
+  for (let i = 0; i < PRACTICE_BACK_ANCHOR_COUNT; i += 1) {
+    const x = reference.x - PRACTICE_BACK_ANCHOR_START_GAP - i * PRACTICE_BACK_ANCHOR_SPACING;
+    const y = practiceAnchorYBehind(reference, x, i);
+    if (practiceHasAnchorNear(x, y)) continue;
+    addAnchor(x, y);
+    anchors[anchors.length - 1].practice = true;
+  }
+}
+
+function capturePracticeState() {
+  return {
+    time,
+    cameraX,
+    cameraY,
+    cameraVX,
+    cameraVY,
+    scoreMeters,
+    scoreStartX,
+    furthestX,
+    runFinalScore,
+    escapeWaveFrontX,
+    escapeWaveSpeed,
+    rngState,
+    backgroundRngState,
+    nextAnchorX,
+    nextObstacleX,
+    generatedWorldX,
+    spawnIndex,
+    terrainCursorX,
+    terrainLastY,
+    nextTerrainPoolX,
+    player: cloneReplayPlayer(),
+    ragdoll: cloneReplayRagdoll(),
+    hookArm: cloneReplayHookArm(),
+    ropeShot: cloneReplayRopeShot(),
+    focusedAnchor: cloneReplayAnchor(focusedAnchor),
+    lockedAnchor: cloneReplayAnchor(lockedAnchor),
+    recentReleasedAnchor: cloneReplayAnchor(recentReleasedAnchor),
+    recentReleasedAnchorAt,
+    recentReleasedAnchorX,
+    recentReleasedAnchorY,
+    anchors: clonePracticeList(anchors),
+    obstacles: clonePracticeList(obstacles),
+    bgShapes: clonePracticeList(bgShapes),
+    terrainKnots: clonePracticeList(terrainKnots),
+    terrainPools: clonePracticeList(terrainPools),
+  };
+}
+
+function resetPracticeCheckpoints() {
+  practiceCheckpoint = null;
+  if (!gameModeUsesPracticeCheckpoints()) return;
+
+  ensurePracticeBackAnchors(player.anchor);
+  practiceCheckpoint = capturePracticeState();
+}
+
+function rememberPracticeReleaseCheckpoint() {
+  if (!gameModeUsesPracticeCheckpoints() || replayMode) return;
+  ensurePracticeBackAnchors(player.anchor);
+  practiceCheckpoint = capturePracticeState();
+}
+
+function markPracticeHook(anchor = player.anchor) {
+  if (!gameModeUsesPracticeCheckpoints() || replayMode) return;
+  ensurePracticeBackAnchors(anchor);
+}
+
+function practiceAnchorFromSnapshot(anchor) {
+  if (!anchor) return null;
+  const id = Number(anchor.id) || 0;
+  const x = Number(anchor.x) || 0;
+  const y = Number(anchor.y) || 0;
+  let found = anchors.find(a => a && a.id === id && Math.abs(a.x - x) < 0.001 && Math.abs(a.y - y) < 0.001);
+  if (!found && id) found = anchors.find(a => a && a.id === id);
+  if (!found) found = anchors.find(a => a && Math.abs(a.x - x) < 0.001 && Math.abs(a.y - y) < 0.001);
+  if (found) return found;
+
+  const restored = cloneReplayAnchor(anchor);
+  anchors.push(restored);
+  return restored;
+}
+
+function restorePracticeCheckpoint(snapshot) {
+  if (!snapshot) return false;
+
+  time = Number.isFinite(Number(snapshot.time)) ? Number(snapshot.time) : time;
+  cameraX = Number.isFinite(Number(snapshot.cameraX)) ? Number(snapshot.cameraX) : cameraX;
+  cameraY = Number.isFinite(Number(snapshot.cameraY)) ? Number(snapshot.cameraY) : cameraY;
+  cameraVX = Number.isFinite(Number(snapshot.cameraVX)) ? Number(snapshot.cameraVX) : 0;
+  cameraVY = Number.isFinite(Number(snapshot.cameraVY)) ? Number(snapshot.cameraVY) : 0;
+  scoreMeters = Math.max(0, Math.floor(Number(snapshot.scoreMeters) || 0));
+  scoreStartX = Number.isFinite(Number(snapshot.scoreStartX)) ? Number(snapshot.scoreStartX) : scoreStartX;
+  furthestX = Number.isFinite(Number(snapshot.furthestX)) ? Number(snapshot.furthestX) : furthestX;
+  runFinalScore = Math.max(0, Math.floor(Number(snapshot.runFinalScore) || 0));
+  escapeWaveFrontX = Number.isFinite(Number(snapshot.escapeWaveFrontX)) ? Number(snapshot.escapeWaveFrontX) : escapeWaveFrontX;
+  escapeWaveSpeed = Number.isFinite(Number(snapshot.escapeWaveSpeed)) ? Number(snapshot.escapeWaveSpeed) : escapeWaveSpeed;
+  rngState = Number.isFinite(Number(snapshot.rngState)) ? normalizeSeedValue(Number(snapshot.rngState)) : rngState;
+  backgroundRngState = Number.isFinite(Number(snapshot.backgroundRngState)) ? normalizeSeedValue(Number(snapshot.backgroundRngState)) : backgroundRngState;
+  nextAnchorX = Number.isFinite(Number(snapshot.nextAnchorX)) ? Number(snapshot.nextAnchorX) : nextAnchorX;
+  nextObstacleX = Number.isFinite(Number(snapshot.nextObstacleX)) ? Number(snapshot.nextObstacleX) : nextObstacleX;
+  generatedWorldX = Number.isFinite(Number(snapshot.generatedWorldX)) ? Number(snapshot.generatedWorldX) : generatedWorldX;
+  spawnIndex = Number.isFinite(Number(snapshot.spawnIndex)) ? Math.floor(Number(snapshot.spawnIndex)) : spawnIndex;
+  terrainCursorX = Number.isFinite(Number(snapshot.terrainCursorX)) ? Number(snapshot.terrainCursorX) : terrainCursorX;
+  terrainLastY = Number.isFinite(Number(snapshot.terrainLastY)) ? Number(snapshot.terrainLastY) : terrainLastY;
+  nextTerrainPoolX = Number.isFinite(Number(snapshot.nextTerrainPoolX)) ? Number(snapshot.nextTerrainPoolX) : nextTerrainPoolX;
+
+  anchors = clonePracticeList(snapshot.anchors);
+  obstacles = clonePracticeList(snapshot.obstacles);
+  bgShapes = clonePracticeList(snapshot.bgShapes);
+  terrainKnots = clonePracticeList(snapshot.terrainKnots);
+  terrainPools = clonePracticeList(snapshot.terrainPools);
+
+  const restoredPlayer = cloneReplayPlayer(snapshot.player || {});
+  Object.assign(player, restoredPlayer);
+  player.anchor = practiceAnchorFromSnapshot(restoredPlayer.anchor);
+  player.attached = Boolean(restoredPlayer.attached && player.anchor);
+  player.alive = true;
+
+  const restoredRagdoll = cloneReplayRagdoll(snapshot.ragdoll || {});
+  ragdoll.initialized = restoredRagdoll.initialized;
+  ragdoll.visualSide = restoredRagdoll.visualSide;
+  ragdoll.joints = restoredRagdoll.joints;
+
+  Object.assign(hookArm, cloneReplayHookArm(snapshot.hookArm || {}));
+  ropeShot = cloneReplayRopeShot(snapshot.ropeShot || null);
+  if (ropeShot) ropeShot.anchor = practiceAnchorFromSnapshot(ropeShot.anchor);
+  focusedAnchor = practiceAnchorFromSnapshot(snapshot.focusedAnchor);
+  lockedAnchor = practiceAnchorFromSnapshot(snapshot.lockedAnchor);
+  recentReleasedAnchor = practiceAnchorFromSnapshot(snapshot.recentReleasedAnchor);
+  recentReleasedAnchorAt = Number.isFinite(Number(snapshot.recentReleasedAnchorAt)) ? Number(snapshot.recentReleasedAnchorAt) : -Infinity;
+  recentReleasedAnchorX = Number.isFinite(Number(snapshot.recentReleasedAnchorX)) ? Number(snapshot.recentReleasedAnchorX) : 0;
+  recentReleasedAnchorY = Number.isFinite(Number(snapshot.recentReleasedAnchorY)) ? Number(snapshot.recentReleasedAnchorY) : 0;
+  ensurePracticeBackAnchors(player.anchor);
+
+  gameOver = false;
+  gamePaused = false;
+  assistCue = null;
+  assistReelCue = null;
+  resetCrashPlayerFade();
+  setCrashActionsVisible(false);
+  stopGameOverSound();
+  if (typeof resetJoystickInput === 'function') resetJoystickInput();
+  if (typeof syncAssistCueUi === 'function') syncAssistCueUi();
+  updateScoreHud();
+  return true;
+}
+
+function resetPracticeAfterDeath() {
+  if (!gameModeUsesPracticeCheckpoints() || replayMode) return false;
+  if (!practiceCheckpoint) {
+    reset({ countAttempt: false, recordRun: false });
+    return true;
+  }
+
+  return restorePracticeCheckpoint(practiceCheckpoint);
 }
 
 function startReplayRecording() {
@@ -1124,6 +1315,7 @@ function inputAction(options = {}) {
   if (record) recordReplayAction();
   if (player.attached) {
     updateFocus();
+    rememberPracticeReleaseCheckpoint();
     lockedAnchor = focusedAnchor;
     recentReleasedAnchor = player.anchor;
     recentReleasedAnchorAt = time;
@@ -1413,10 +1605,12 @@ function attachToAnchor(anchor) {
     player.vy -= radial * ny * 0.35;
   }
   player.angularVelocity = ((player.vx * ny) - (player.vy * nx)) / Math.max(1, player.ropeLength);
+  markPracticeHook();
 }
 
 function die() {
   if (gameOver) return;
+  if (resetPracticeAfterDeath()) return;
   gamePaused = false;
   runFinalScore = refreshScoreAndRecords();
   if (!replayMode) finalizeReplayRecording();
