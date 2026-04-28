@@ -640,11 +640,23 @@
     }
 
     .hat-choice.is-locked {
+      border-color: var(--muted);
       border-style: dashed;
+      background: rgba(127, 127, 127, 0.08);
+      color: var(--muted);
+    }
+
+    .hat-choice.is-locked .hat-choice-preview {
+      filter: grayscale(1);
+      opacity: 0.62;
+    }
+
+    .hat-choice.is-locked .hat-choice-cost {
+      color: var(--muted);
     }
 
     .hat-choice.is-locked:not(.is-affordable) {
-      opacity: 0.58;
+      opacity: 0.72;
     }
 
     .hat-choice.is-affordable {
